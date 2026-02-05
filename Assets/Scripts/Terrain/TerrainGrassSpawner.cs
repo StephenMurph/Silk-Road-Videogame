@@ -13,10 +13,12 @@ public static class TerrainGrassSpawner
         int instanceCount,
         int seed,
         System.Func<float, float, float> grassDensity01,
+        float seaLevel01,
         bool clearExisting = true,
         float maxSlopeDegrees = 90f,
         Vector2 baseScaleRange = default,
-        float yRotationRandom = 360f
+        float yRotationRandom = 360f,
+        float seaBuffer01 = 0.01f
     )
     {
         if (!terrain || !grassPrefab) { Debug.LogError("Missing terrain or grassPrefab."); return; }
@@ -44,6 +46,7 @@ public static class TerrainGrassSpawner
             if (slope > maxSlopeDegrees) continue;
 
             float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
+            if (h01 <= seaLevel01 + seaBuffer01) continue;
             float s = Mathf.Lerp(baseScaleRange.x, baseScaleRange.y, (float)rng.NextDouble());
 
             instances.Add(new TreeInstance
