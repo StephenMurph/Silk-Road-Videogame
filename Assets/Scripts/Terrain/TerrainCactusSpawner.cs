@@ -1,11 +1,11 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 
-public static class TerrainTreeSpawner
+public static class TerrainCactusSpawner
 {
-    public static void SpawnTrees(
+    public static void SpawnCactuses(
         Terrain terrain,
-        GameObject[] treePrefabs,
+        GameObject[] cactusPrefabs,
         int instanceCount,
         int seed,
         System.Func<float, float, float> biomeDesertMask01,
@@ -17,29 +17,29 @@ public static class TerrainTreeSpawner
         float maxHeight01,
         Vector2 scaleRange,
         float minSpacingWorld = 0f,
-        bool clearExistingTrees = false,
+        bool clearExistingCactuses = false,
         System.Func<float, float, float> lakeMask01 = null,
         float blockedCutoff = 0.5f,
         float seaLevel01 = 0.08f,
         float seaBuffer01 = 0.01f
     )
     {
-        if (!terrain) { Debug.LogError("SpawnTrees: missing terrain"); return; }
-        if (treePrefabs == null || treePrefabs.Length == 0) { Debug.LogError("SpawnTrees: no treePrefabs"); return; }
+        if (!terrain) { Debug.LogError("SpawnCactuses: missing terrain"); return; }
+        if (cactusPrefabs == null || cactusPrefabs.Length == 0) { Debug.LogError("SpawnCactuses: no cactusPrefabs"); return; }
         
-        var validPrefabs = new List<GameObject>(treePrefabs.Length);
-        foreach (var p in treePrefabs)
+        var validPrefabs = new List<GameObject>(cactusPrefabs.Length);
+        foreach (var p in cactusPrefabs)
             if (p) validPrefabs.Add(p);
 
         if (validPrefabs.Count == 0)
         {
-            Debug.LogError("SpawnTrees: all entries in treePrefabs are null.");
+            Debug.LogError("SpawnCactuses: all entries in cactusPrefabs are null.");
             return;
         }
         
         if (scaleRange.x <= 0f && scaleRange.y <= 0f)
         {
-            Debug.LogWarning("SpawnTrees: scaleRange is (0,0). Forcing to (1,1).");
+            Debug.LogWarning("SpawnCactuses: scaleRange is (0,0). Forcing to (1,1).");
             scaleRange = new Vector2(1f, 1f);
         }
         if (scaleRange.y < scaleRange.x) (scaleRange.x, scaleRange.y) = (scaleRange.y, scaleRange.x);
@@ -52,7 +52,7 @@ public static class TerrainTreeSpawner
 
         var rng = new System.Random(seed);
         var instances = new List<TreeInstance>(instanceCount);
-        
+
         Dictionary<int, List<Vector2>> buckets = null;
         float cellSize = minSpacingWorld;
 
@@ -68,47 +68,41 @@ public static class TerrainTreeSpawner
 
         int safety = Mathf.Max(1000, instanceCount * 20);
         
-        int rejDesert = 0, rejSlope = 0, rejHeight = 0, rejSpacing = 0;
+        int rejNotDesert = 0, rejMountain = 0, rejBlocked = 0, rejSlope = 0, rejHeight = 0, rejRoad = 0, rejSpacing = 0;
 
         for (int tries = 0; tries < safety && instances.Count < instanceCount; tries++)
         {
             float nx = (float)rng.NextDouble();
             float nz = (float)rng.NextDouble();
-
+            
             float desert = biomeDesertMask01 != null ? Mathf.Clamp01(biomeDesertMask01(nx, nz)) : 0f;
-            if (desert >= desertCutoff) { rejDesert++; continue; }
-            
+            if (desert < desertCutoff) { rejNotDesert++; continue; }
+
             float mountain = biomeMountainMask01 != null ? Mathf.Clamp01(biomeMountainMask01(nx, nz)) : 0f;
-            if (mountain >= mountainCutoff) continue;
-            
+            if (mountain >= mountainCutoff) { rejMountain++; continue; }
+
             float blocked = lakeMask01 != null ? Mathf.Clamp01(lakeMask01(nx, nz)) : 0f;
-            if (blocked >= blockedCutoff) continue;
-            
-            
+            if (blocked >= blockedCutoff) { rejBlocked++; continue; }
 
             float slope = data.GetSteepness(nx, nz);
             if (slope > maxSlopeDegrees) { rejSlope++; continue; }
 
             float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
-            
             if (h01 <= seaLevel01 + seaBuffer01) { rejHeight++; continue; }
-            
             if (h01 < minHeight01 || h01 > maxHeight01) { rejHeight++; continue; }
-            
+
             float road = TerrainRoadGenerator.SampleRoadMask01(data, nx, nz);
-            if (road > 0.25f) { /* reject */ continue; } 
-            
-            
-            
+            if (road > 0.25f) { rejRoad++; continue; }
+
             if (buckets != null)
             {
-                Vector2 p = new Vector2(nx * data.size.x, nz * data.size.z);
+                Vector2 p = new Vector2(nx * data.size.x, nz * data.size.z); 
                 int cx = Mathf.FloorToInt(p.x / cellSize);
                 int cz = Mathf.FloorToInt(p.y / cellSize);
 
                 float minSqr = minSpacingWorld * minSpacingWorld;
                 bool tooClose = false;
-                
+
                 for (int dz = -1; dz <= 1 && !tooClose; dz++)
                 for (int dx = -1; dx <= 1 && !tooClose; dx++)
                 {
@@ -126,7 +120,7 @@ public static class TerrainTreeSpawner
                 }
 
                 if (tooClose) { rejSpacing++; continue; }
-                
+
                 int myKey = Hash(cx, cz);
                 if (!buckets.TryGetValue(myKey, out var mine))
                     buckets[myKey] = mine = new List<Vector2>(4);
@@ -149,8 +143,7 @@ public static class TerrainTreeSpawner
             });
         }
 
-        // Apply
-        if (clearExistingTrees)
+        if (clearExistingCactuses)
         {
             data.treeInstances = instances.ToArray();
         }
@@ -164,8 +157,9 @@ public static class TerrainTreeSpawner
         terrain.Flush();
 
         Debug.Log(
-            $"SpawnTrees: accepted {instances.Count}/{instanceCount} " +
-            $"(safety tries {safety}). Rejects: desert {rejDesert}, slope {rejSlope}, height {rejHeight}, spacing {rejSpacing}. " +
+            $"SpawnCactuses: accepted {instances.Count}/{instanceCount} (safety tries {safety}). " +
+            $"Rejects: notDesert {rejNotDesert}, mountain {rejMountain}, blocked {rejBlocked}, " +
+            $"slope {rejSlope}, height {rejHeight}, road {rejRoad}, spacing {rejSpacing}. " +
             $"Total treeInstances now: {data.treeInstances.Length}. Prototypes: {data.treePrototypes.Length}"
         );
     }
@@ -184,3 +178,4 @@ public static class TerrainTreeSpawner
         return list.Count - 1;
     }
 }
+

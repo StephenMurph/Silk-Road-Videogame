@@ -3,10 +3,6 @@ using UnityEngine;
 
 public static class TerrainGrassSpawner
 {
-    /// <summary>
-    /// Spawns grass across the terrain using Terrain tree instances (fast).
-    /// Your grassPrefab must be suitable as a Terrain Tree (billboard/mesh/shader).
-    /// </summary>
     public static void SpawnGrassAsTrees(
         Terrain terrain,
         GameObject grassPrefab,
@@ -26,11 +22,9 @@ public static class TerrainGrassSpawner
         if (baseScaleRange == default) baseScaleRange = new Vector2(0.8f, 1.2f);
 
         TerrainData data = terrain.terrainData;
-
-        // 1) Ensure grass prefab exists in TreePrototypes; get its index
+        
         int protoIndex = EnsureTreePrototype(data, grassPrefab);
-
-        // 2) Build instances
+        
         var rng = new System.Random(seed);
         var instances = new List<TreeInstance>(instanceCount);
 
@@ -60,8 +54,7 @@ public static class TerrainGrassSpawner
                 lightmapColor = Color.white
             });
         }
-
-        // 3) Apply (optionally clearing existing)
+        
         if (clearExisting)
         {
             data.treeInstances = instances.ToArray();
@@ -73,7 +66,6 @@ public static class TerrainGrassSpawner
             data.treeInstances = combined.ToArray();
         }
 
-        // Important to update visuals
         terrain.Flush();
     }
 
@@ -85,8 +77,7 @@ public static class TerrainGrassSpawner
             if (protos[i].prefab == prefab)
                 return i;
         }
-
-        // Not found: add it
+        
         var list = new List<TreePrototype>(protos)
         {
             new TreePrototype { prefab = prefab, bendFactor = 0f }

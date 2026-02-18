@@ -4,23 +4,22 @@ using UnityEngine;
 
 public static class TerrainRoadGenerator
 {
-    // Call this from your Regenerate() after heights + textures are applied
     public static Texture2D roadMask01; // R channel stores 0..1 road influence
     private static int roadMaskW, roadMaskH;
     public static void GenerateRandomRoadBetweenTwoPoints(
         Terrain terrain,
-        Func<float, float, float> desertMask01,   // (nx,nz) -> 0..1
+        Func<float, float, float> desertMask01,   
         Func<float, float, float> mountainMask01,
         int seed,
-        int gridSize = 256,                       // pathfinding resolution (128-512 typical)
-        float desertCutoff = 0.35f,               // same idea as your trees/grass cutoff
+        int gridSize = 256,                      
+        float desertCutoff = 0.35f,              
         float maxSlopeDegrees = 35f,
-        int roadLayerIndex = 2,                   // dirtRoadLayer index in terrainLayers
-        int trailLayerIndex = 3,                  // desertTrailLayer index
-        float grassRoadHalfWidthWorld = 3.5f,     // ~7m wide road
-        float desertTrailHalfWidthWorld = 1.2f,   // ~2.4m wide trail
-        float paintStrength = 0.85f, // how strongly to paint over existing
-        float mountainAvoidance = 8.0f,           // add: higher = avoid more
+        int roadLayerIndex = 2,                   
+        int trailLayerIndex = 3,                  
+        float grassRoadHalfWidthWorld = 3.5f,     
+        float desertTrailHalfWidthWorld = 1.2f,   
+        float paintStrength = 0.85f, 
+        float mountainAvoidance = 8.0f,           
         float mountainBlockCutoff = 0.55f 
     )
     {
@@ -34,11 +33,11 @@ public static class TerrainRoadGenerator
 
         var rng = new System.Random(seed);
 
-        // 1) pick two random endpoints (normalized 0..1)
+  
         Vector2 a = PickPoint(rng, data, desertMask01, mountainMask01, maxSlopeDegrees);
         Vector2 b = PickPoint(rng, data, desertMask01, mountainMask01, maxSlopeDegrees);
 
-        // 2) A* path on a grid
+
         var path = FindPathAStar(data, desertMask01, mountainMask01, a, b, gridSize, desertCutoff, maxSlopeDegrees, mountainAvoidance, mountainBlockCutoff);
         if (path == null || path.Count < 2)
         {
@@ -48,7 +47,7 @@ public static class TerrainRoadGenerator
         
         EnsureRoadMask(data);
         ClearRoadMask();
-        // 3) Paint along path
+
         PaintPathLayers(terrain, desertMask01, path,
             roadLayerIndex, trailLayerIndex,
             grassRoadHalfWidthWorld, desertTrailHalfWidthWorld,
@@ -67,7 +66,7 @@ public static class TerrainRoadGenerator
         float maxSlope
     )
     {
-        // Keep it simple: try a bunch, accept first that isn't too steep.
+
         for (int i = 0; i < 500; i++)
         {
             float nx = (float)rng.NextDouble();
@@ -77,11 +76,8 @@ public static class TerrainRoadGenerator
             if (slope > maxSlope) continue;
             
             float mountain = mountainMask01 != null ? Mathf.Clamp01(mountainMask01(nx, nz)) : 0f;
-            if (mountain > 0.25f) continue; // don't place endpoints in mountains
-
-            // Optional: keep “towns” out of deep desert, if you want:
-            // float desert = desertMask01 != null ? Mathf.Clamp01(desertMask01(nx, nz)) : 0f;
-            // if (desert > 0.85f) continue;
+            if (mountain > 0.25f) continue; 
+            
 
             return new Vector2(nx, nz);
         }
@@ -96,7 +92,7 @@ public static class TerrainRoadGenerator
     {
         public int x, z;
         public float g, f;
-        public int parent; // packed index, -1 none
+        public int parent; 
     }
 
     private static List<Vector2> FindPathAStar(
@@ -125,8 +121,7 @@ public static class TerrainRoadGenerator
 
         int start = Pack(sx, sz);
         int goal = Pack(gx, gz);
-
-        // Basic binary-heap priority queue (minimal)
+        
         var open = new SimpleMinHeap(Count);
         var inOpen = new bool[Count];
         var closed = new bool[Count];
@@ -146,8 +141,7 @@ public static class TerrainRoadGenerator
         nodes[start].f = Heuristic(sx, sz);
         open.Push(start, nodes[start].f);
         inOpen[start] = true;
-
-        // 8-neighbor movement
+        
         int[] dx8 = { -1, 0, 1, -1, 1, -1, 0, 1 };
         int[] dz8 = { -1, -1, -1, 0, 0, 1, 1, 1 };
 
@@ -164,15 +158,13 @@ public static class TerrainRoadGenerator
                 return ReconstructPath(nodes, start, goal, N);
 
             Unpack(current, out int cx, out int cz);
-
-            // normalized coords for sampling
+            
             float cnx = cx / (float)(N - 1);
             float cnz = cz / (float)(N - 1);
 
             float cDesert = desertMask01 != null ? Mathf.Clamp01(desertMask01(cnx, cnz)) : 0f;
             float cSlope = data.GetSteepness(cnx, cnz);
-
-            // If you want “no road on crazy cliffs”, treat as blocked:
+            
             if (cSlope > maxSlopeDegrees + 10f) continue;
 
             for (int k = 0; k < 8; k++)
@@ -190,22 +182,16 @@ public static class TerrainRoadGenerator
                 float nDesert = desertMask01 != null ? Mathf.Clamp01(desertMask01(nnx, nnz)) : 0f;
                 float nSlope = data.GetSteepness(nnx, nnz);
                 float nMountain = mountainMask01 != null ? Mathf.Clamp01(mountainMask01(nnx, nnz)) : 0f;
-
-// If strongly mountainous, treat as blocked
+                
                 if (nMountain >= mountainBlockCutoff) continue;
-
-                // Cost model:
-                // - prefer grass a bit (cheaper)
-                // - avoid steep slopes
-                // - allow desert but it’s “costlier”, still pathable
-                float step = (k % 2 == 0) ? 1.4142f : 1f; // diagonals slightly longer (rough)
-                float desertPenalty = Mathf.Lerp(0.0f, 1.25f, nDesert); // desert costs more
+                
+                float step = (k % 2 == 0) ? 1.4142f : 1f; 
+                float desertPenalty = Mathf.Lerp(0.0f, 1.25f, nDesert); 
                 float slopePenalty = Mathf.InverseLerp(0f, maxSlopeDegrees, Mathf.Min(nSlope, maxSlopeDegrees)) * 2.0f;
-
-                // Extra push to stay on grass when near threshold:
+                
                 if (nDesert > desertCutoff) desertPenalty += 0.5f;
 
-                float mountainPenalty = nMountain * mountainAvoidance; // big number -> avoid
+                float mountainPenalty = nMountain * mountainAvoidance; 
                 float tentativeG = nodes[current].g + step * (1f + desertPenalty + slopePenalty + mountainPenalty);
 
                 if (tentativeG < nodes[ni].g)
@@ -222,7 +208,7 @@ public static class TerrainRoadGenerator
                     }
                     else
                     {
-                        open.Push(ni, nodes[ni].f); // lazy decrease-key
+                        open.Push(ni, nodes[ni].f); 
                     }
                 }
             }
@@ -266,16 +252,14 @@ public static class TerrainRoadGenerator
         roadMask01.wrapMode = TextureWrapMode.Clamp;
         roadMask01.filterMode = FilterMode.Bilinear;
 
-        ClearRoadMask(); // initialize to 0
+        ClearRoadMask(); 
     }
 
     public static void ClearRoadMask()
     {
         if (roadMask01 == null) return;
-
-        // Fast fill with black
+        
         var cols = new Color32[roadMask01.width * roadMask01.height];
-        // default Color32 is (0,0,0,0) which is fine; R=0
         roadMask01.SetPixels32(cols);
         roadMask01.Apply(false, false);
     }
@@ -286,17 +270,13 @@ public static class TerrainRoadGenerator
 
         nx = Mathf.Clamp01(nx);
         nz = Mathf.Clamp01(nz);
-
-        // NOTE: alphamaps are indexed [z,y] style; Texture2D is x,y.
-        // We map normalized -> pixel coords.
+        
         float x = nx * (roadMaskW - 1);
         float y = nz * (roadMaskH - 1);
-
-        // Bilinear sample
+        
         return roadMask01.GetPixelBilinear(nx, nz).r;
     }
-
-    // -------------------- Painting --------------------
+    
 
     private static void PaintPathLayers(
         Terrain terrain,
@@ -320,18 +300,14 @@ public static class TerrainRoadGenerator
 
         float worldPerAlphaX = data.size.x / (aw - 1);
         float worldPerAlphaZ = data.size.z / (ah - 1);
-
-        // How often to stamp along the path in WORLD meters.
-        // Smaller = smoother road but slower.
+        
         const float stepMeters = 1.0f;
 
-        // Walk each segment and stamp along it
         for (int i = 0; i < pathNZ.Count - 1; i++)
         {
             Vector2 aNZ = pathNZ[i];
             Vector2 bNZ = pathNZ[i + 1];
-
-            // Convert to world XZ
+            
             Vector2 aW = new Vector2(aNZ.x * data.size.x, aNZ.y * data.size.z);
             Vector2 bW = new Vector2(bNZ.x * data.size.x, bNZ.y * data.size.z);
 
@@ -382,12 +358,10 @@ public static class TerrainRoadGenerator
 
     float halfWidthWorld = isDesert ? desertHalfWidthWorld : grassHalfWidthWorld;
     int targetLayer = isDesert ? trailLayerIndex : roadLayerIndex;
-
-    // Center in alphamap pixel coords (float so distance is smoother)
+    
     float ax = nx * (aw - 1);
     float az = nz * (ah - 1);
-
-    // Radius in pixels
+    
     float radiusPxX = halfWidthWorld / Mathf.Max(0.0001f, worldPerAlphaX);
     float radiusPxZ = halfWidthWorld / Mathf.Max(0.0001f, worldPerAlphaZ);
     float radiusPx = Mathf.Max(radiusPxX, radiusPxZ);
@@ -400,32 +374,26 @@ public static class TerrainRoadGenerator
     for (int z = zmin; z <= zmax; z++)
     for (int x = xmin; x <= xmax; x++)
     {
-        // Distance in world units
         float dxW = (x - ax) * worldPerAlphaX;
         float dzW = (z - az) * worldPerAlphaZ;
         float dist = Mathf.Sqrt(dxW * dxW + dzW * dzW);
 
         if (dist > halfWidthWorld) continue;
-
-        // soft falloff
+        
         float t = 1f - (dist / Mathf.Max(0.0001f, halfWidthWorld));
-        t = t * t * (3f - 2f * t); // smoothstep
+        t = t * t * (3f - 2f * t); 
         float w = t * paintStrength;
-
-        // Blend into target layer
+        
         float curTarget = maps[z, x, targetLayer];
         float newTarget = Mathf.Lerp(curTarget, 1f, w);
 
         if (roadMask01 != null)
         {
-            // Texture2D uses (x,y) where y is vertical; our z corresponds to y.
-            // Read current mask value (R channel), keep the max.
             float cur = roadMask01.GetPixel(x, z).r;
             if (w > cur)
                 roadMask01.SetPixel(x, z, new Color(w, 0f, 0f, 1f));
         }
         
-        // Renormalize others
         float otherSum = 0f;
         for (int l = 0; l < layers; l++)
             if (l != targetLayer) otherSum += maps[z, x, l];
@@ -446,8 +414,7 @@ public static class TerrainRoadGenerator
         maps[z, x, targetLayer] = newTarget;
     }
 }
-
-    // -------------------- Tiny min-heap --------------------
+    
 
     private class SimpleMinHeap
     {
