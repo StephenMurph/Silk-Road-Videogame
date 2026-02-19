@@ -105,6 +105,9 @@ public class TerrainManager : MonoBehaviour
     private bool hasLake;
     private Vector2 lakeCenterNZ;
     private float lakeWaterLevel01Actual;
+    
+    public float SendMessageDesertMask(float nx, float nz) => DesertMaskFromRegions01(nx, nz);
+    public float SendMessageMountainMask(float nx, float nz) => MountainMaskFromRegions01(nx, nz);
 
     public enum BiomeType { Grassland, Desert, Mountain }
 
@@ -213,30 +216,15 @@ public class TerrainManager : MonoBehaviour
         
         ApplyFixedBiomeTextures();
         
-        TerrainRoadGenerator.GenerateRandomRoadBetweenTwoPoints(
-            terrain: terrain,
-            desertMask01: (nx, nz) => DesertMaskFromRegions01(nx, nz),
-            mountainMask01: (nx, nz) =>
-            {
-                float m = MountainMaskFromRegions01(nx, nz);
-
-                // HARD blocked zone for roads: lake + buffer (meters)
-                float lakeBlock = LakeMask01(nx, nz, extraBufferWorld: 12f);
-
-                return Mathf.Clamp01(Mathf.Max(m, lakeBlock));
-            },
-            seed: seed ^ 0xA11CE,
-            gridSize: 256,
-            desertCutoff: 0.35f,
-            maxSlopeDegrees: 35f,
-            roadLayerIndex: 3,
-            trailLayerIndex: 4,
-            grassRoadHalfWidthWorld: 7f,
-            desertTrailHalfWidthWorld: 3.5f,
-            paintStrength: 0.85f,
-            mountainAvoidance: 20f,
-            mountainBlockCutoff: 0.5f
-        );
+        var townSystem = GetComponent<TerrainTownRoadSystem>();
+        if (townSystem != null)
+        {
+            townSystem.GenerateTownsAndRoads();
+        }
+        else
+        {
+            Debug.LogWarning("No TerrainTownRoadSystem found (no towns/roads generated).");
+        }
         
         TerrainGrassSpawner.SpawnGrassAsTrees(
             terrain: terrain,
@@ -836,5 +824,36 @@ private void CarveLakeBasin(
         // no collider
         var col = go.GetComponent<Collider>();
         if (col) col.enabled = false;
+    }
+    
+    public Texture2D BuildBiomeMapTexture(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Point;
+
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            float nx = x / (float)(size - 1);
+            float nz = y / (float)(size - 1);
+
+            float desert = DesertMaskFromRegions01(nx, nz);
+            float mountain = MountainMaskFromRegions01(nx, nz);
+            float grass = Mathf.Max(0f, 1f - desert - mountain);
+
+            Color c;
+            if (mountain >= desert && mountain >= grass)
+                c = Color.gray;
+            else if (desert >= grass)
+                c = new Color(1f, 0.85f, 0.2f); // yellow
+            else
+                c = Color.green;
+
+            tex.SetPixel(x, y, c);
+        }
+
+        tex.Apply(false, false);
+        return tex;
     }
 }

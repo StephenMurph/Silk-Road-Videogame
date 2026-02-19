@@ -336,6 +336,136 @@ public static class TerrainRoadGenerator
         data.SetAlphamaps(0, 0, maps);
     }
     
+     public static void GenerateRoadNetwork(
+            Terrain terrain,
+            Func<float, float, float> desertMask01,
+            Func<float, float, float> mountainMask01,
+            int seed,
+            List<RoadEdgeNZ> edgesNZ,
+            int gridSize = 256,
+            float desertCutoff = 0.35f,
+            float maxSlopeDegrees = 35f,
+            int roadLayerIndex = 2,
+            int trailLayerIndex = 3,
+            float grassRoadHalfWidthWorld = 3.5f,
+            float desertTrailHalfWidthWorld = 1.2f,
+            float paintStrength = 0.85f,
+            float mountainAvoidance = 8.0f,
+            float mountainBlockCutoff = 0.55f,
+            bool clearRoadMaskFirst = true
+        )
+        {
+            if (!terrain) { Debug.LogError("RoadGen: missing terrain"); return; }
+            var data = terrain.terrainData;
+
+            if (edgesNZ == null || edgesNZ.Count == 0)
+            {
+                Debug.Log("RoadGen: no edges to generate.");
+                return;
+            }
+
+            EnsureRoadMask(data);
+            if (clearRoadMaskFirst) ClearRoadMask();
+
+            // We want to paint multiple paths into the same alphamap buffer.
+            int aw = data.alphamapWidth;
+            int ah = data.alphamapHeight;
+            var maps = data.GetAlphamaps(0, 0, aw, ah);
+
+            int ok = 0;
+            for (int i = 0; i < edgesNZ.Count; i++)
+            {
+                var e = edgesNZ[i];
+
+                var path = FindPathAStar(
+                    data, desertMask01, mountainMask01,
+                    e.aNZ, e.bNZ,
+                    gridSize, desertCutoff, maxSlopeDegrees,
+                    mountainAvoidance, mountainBlockCutoff
+                );
+
+                if (path == null || path.Count < 2) continue;
+
+                // paint this path into the same maps buffer
+                PaintPathLayersIntoMaps(
+                    terrain, desertMask01, path,
+                    roadLayerIndex, trailLayerIndex,
+                    grassRoadHalfWidthWorld, desertTrailHalfWidthWorld,
+                    desertCutoff, paintStrength,
+                    maps
+                );
+
+                ok++;
+            }
+
+            if (roadMask01 != null) roadMask01.Apply(false, false);
+            data.SetAlphamaps(0, 0, maps);
+            terrain.Flush();
+
+            Debug.Log($"RoadGen: painted {ok}/{edgesNZ.Count} town roads.");
+        }
+        public readonly struct RoadEdgeNZ
+        {
+            public readonly Vector2 aNZ;
+            public readonly Vector2 bNZ;
+            public RoadEdgeNZ(Vector2 a, Vector2 b) { aNZ = a; bNZ = b; }
+        }
+        
+        private static void PaintPathLayersIntoMaps(
+            Terrain terrain,
+            Func<float, float, float> desertMask01,
+            List<Vector2> pathNZ,
+            int roadLayerIndex,
+            int trailLayerIndex,
+            float grassHalfWidthWorld,
+            float desertHalfWidthWorld,
+            float desertCutoff,
+            float paintStrength,
+            float[,,] maps
+        )
+        {
+            var data = terrain.terrainData;
+
+            int aw = data.alphamapWidth;
+            int ah = data.alphamapHeight;
+            int layers = data.alphamapLayers;
+
+            float worldPerAlphaX = data.size.x / (aw - 1);
+            float worldPerAlphaZ = data.size.z / (ah - 1);
+
+            const float stepMeters = 1.0f;
+
+            for (int i = 0; i < pathNZ.Count - 1; i++)
+            {
+                Vector2 aNZ = pathNZ[i];
+                Vector2 bNZ = pathNZ[i + 1];
+
+                Vector2 aW = new Vector2(aNZ.x * data.size.x, aNZ.y * data.size.z);
+                Vector2 bW = new Vector2(bNZ.x * data.size.x, bNZ.y * data.size.z);
+
+                float segLen = Vector2.Distance(aW, bW);
+                int steps = Mathf.Max(1, Mathf.CeilToInt(segLen / stepMeters));
+
+                for (int s = 0; s <= steps; s++)
+                {
+                    float t = s / (float)steps;
+                    Vector2 pW = Vector2.Lerp(aW, bW, t);
+
+                    float nx = pW.x / data.size.x;
+                    float nz = pW.y / data.size.z;
+
+                    StampAtNormalized(
+                        maps, aw, ah, layers,
+                        worldPerAlphaX, worldPerAlphaZ,
+                        desertMask01, nx, nz,
+                        roadLayerIndex, trailLayerIndex,
+                        grassHalfWidthWorld, desertHalfWidthWorld,
+                        desertCutoff, paintStrength
+                    );
+                }
+            }
+        }
+    
     private static void StampAtNormalized(
     float[,,] maps,
     int aw, int ah, int layers,
