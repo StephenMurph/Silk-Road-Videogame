@@ -108,6 +108,8 @@ public class TerrainManager : MonoBehaviour
     
     public float SendMessageDesertMask(float nx, float nz) => DesertMaskFromRegions01(nx, nz);
     public float SendMessageMountainMask(float nx, float nz) => MountainMaskFromRegions01(nx, nz);
+    
+    public float SendMessageEdgeMask(float nx, float nz) => EdgeMask01(nx, nz);
 
     public enum BiomeType { Grassland, Desert, Mountain }
 
@@ -138,7 +140,6 @@ public class TerrainManager : MonoBehaviour
     [Range(0f, 0.2f)] public float edgeBelowSea01 = 0.03f;   // how far below sea the edge sinks
     public AnimationCurve edgeFalloffCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
 
-// how strongly edge becomes desert (1 = full desert at edge)
     [Range(0f, 1f)] public float edgeBeachStrength = 1f;
 
     [Range(0f, 1f)] public float defaultDesert = 0f; 

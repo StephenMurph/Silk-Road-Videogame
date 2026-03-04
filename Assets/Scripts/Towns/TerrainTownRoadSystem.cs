@@ -60,6 +60,16 @@ public class TerrainTownRoadSystem : MonoBehaviour
     [Header("Debug")]
     public bool clearExistingTowns = true;
     public string townRootName = "TownsRoot";
+    
+    [Header("Main Road Settings")]
+    [Tooltip("How strongly branch roads prefer snapping onto the main road (0 = off).")]
+    [Range(0f, 1f)] public float branchRoadAttraction = 0.85f;
+
+    [Tooltip("Chance to add extra cross-links (minor roads) after the main road exists.")]
+    [Range(0f, 1f)] public float crossLinkChance = 0.15f;
+
+    [Tooltip("How many cross-links per town attempt.")]
+    [Range(0, 3)] public int crossLinksPerTown = 1;
 
     [Serializable]
     public class TownInstance
@@ -70,29 +80,86 @@ public class TerrainTownRoadSystem : MonoBehaviour
 
     public readonly List<TownInstance> towns = new();
 
-    public void GenerateTownsAndRoads()
+   public void GenerateTownsAndRoads()
+{
+    if (!terrainManager) terrainManager = GetComponent<TerrainManager>();
+    if (!terrain) terrain = terrainManager ? terrainManager.GetComponent<Terrain>() : null;
+    if (!terrainManager || !terrain || !housePrefab)
     {
-        if (!terrainManager) terrainManager = GetComponent<TerrainManager>();
-        if (!terrain) terrain = terrainManager ? terrainManager.GetComponent<Terrain>() : null;
-        if (!terrainManager || !terrain || !housePrefab)
-        {
-            Debug.LogError("TerrainTownRoadSystem: missing refs (terrainManager/terrain/housePrefab).");
-            return;
-        }
+        Debug.LogError("TerrainTownRoadSystem: missing refs (terrainManager/terrain/housePrefab).");
+        return;
+    }
 
-        var data = terrain.terrainData;
-        
-        SpawnTowns(data);
-        
-        edgesNZ = BuildLocalEdges(data);
-        BuildAdjacencyFromEdges();
-        
+    var data = terrain.terrainData;
+
+    SpawnTowns(data);
+
+    // --- Build a MAIN + BRANCH style edge list ---
+    var townsNZ = new List<Vector2>(towns.Count);
+    for (int i = 0; i < towns.Count; i++)
+        townsNZ.Add(towns[i].nz);
+
+    // This returns: [main chain edges first] + [optional cross-links]
+    var allEdges = TerrainRoadGenerator.BuildMainAndBranchEdges(
+        townsNZ: townsNZ,
+        seed: townSeed,
+        extraConnectionChance: crossLinkChance,
+        extraConnectionsPerTown: crossLinksPerTown
+    );
+
+    if (townsNZ.Count < 2 || allEdges.Count == 0)
+    {
+        Debug.LogWarning("TownRoadSystem: not enough towns/edges to generate roads.");
+        return;
+    }
+
+    int mainCount = Mathf.Max(0, townsNZ.Count - 1);
+    mainCount = Mathf.Min(mainCount, allEdges.Count);
+
+    var mainEdges = allEdges.GetRange(0, mainCount);
+    var branchEdges = allEdges.GetRange(mainCount, allEdges.Count - mainCount);
+    
+    float edgeBlockCutoff = 0.05f;
+
+    // --- Masks ---
+    Func<float, float, float> desertMask = (nx, nz) => terrainManager.SendMessageDesertMask(nx, nz);
+    Func<float, float, float> mountainMask = (nx, nz) => terrainManager.SendMessageMountainMask(nx, nz);
+    Func<float, float, float> edgeMask = (nx, nz) => terrainManager.SendMessageEdgeMask(nx, nz);
+
+
+    // --- PASS 1: paint main road backbone (clears road mask) ---
+    TerrainRoadGenerator.GenerateRoadNetwork(
+        terrain: terrain,
+        desertMask01: desertMask,
+        mountainMask01: mountainMask,
+        edgeMask01: edgeMask,
+        seed: townSeed ^ 0x51A71,
+        edgesNZ: mainEdges,
+        gridSize: gridSize,
+        desertCutoff: desertCutoff,
+        maxSlopeDegrees: maxSlopeDegrees,
+        roadLayerIndex: roadLayerIndex,
+        trailLayerIndex: trailLayerIndex,
+        grassRoadHalfWidthWorld: grassRoadHalfWidthWorld,
+        desertTrailHalfWidthWorld: desertTrailHalfWidthWorld,
+        paintStrength: paintStrength,
+        mountainAvoidance: mountainAvoidance,
+        mountainBlockCutoff: mountainRoadBlockCutoff,
+        edgeBlockCutoff: edgeBlockCutoff,
+        clearRoadMaskFirst: true,
+        roadAttraction: 0f
+    );
+
+    // --- PASS 2: paint branches that prefer existing main road (do NOT clear) ---
+    if (branchEdges.Count > 0 && branchRoadAttraction > 0f)
+    {
         TerrainRoadGenerator.GenerateRoadNetwork(
             terrain: terrain,
-            desertMask01: (nx, nz) => terrainManager != null ? terrainManager.SendMessageDesertMask(nx, nz) : 0f,
-            mountainMask01: (nx, nz) => terrainManager != null ? terrainManager.SendMessageMountainMask(nx, nz) : 0f,
+            desertMask01: desertMask,
+            mountainMask01: mountainMask,
+            edgeMask01: edgeMask,
             seed: townSeed ^ 0x51A71,
-            edgesNZ: edgesNZ,
+            edgesNZ: mainEdges,
             gridSize: gridSize,
             desertCutoff: desertCutoff,
             maxSlopeDegrees: maxSlopeDegrees,
@@ -103,11 +170,18 @@ public class TerrainTownRoadSystem : MonoBehaviour
             paintStrength: paintStrength,
             mountainAvoidance: mountainAvoidance,
             mountainBlockCutoff: mountainRoadBlockCutoff,
-            clearRoadMaskFirst: true
+            edgeBlockCutoff: edgeBlockCutoff,
+            clearRoadMaskFirst: true,
+            roadAttraction: 0f
         );
-
-        Debug.Log($"TownRoadSystem: towns={towns.Count}, edges={edgesNZ.Count}");
     }
+
+    // Update edgesNZ + adjacency to match the new network
+    edgesNZ = allEdges;
+    BuildAdjacencyFromEdges();
+
+    Debug.Log($"TownRoadSystem: towns={towns.Count}, mainEdges={mainEdges.Count}, branchEdges={branchEdges.Count}, totalEdges={edgesNZ.Count}");
+}
 
     void SpawnTowns(TerrainData data)
     {
