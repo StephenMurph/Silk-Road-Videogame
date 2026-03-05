@@ -287,6 +287,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: DicePrefab 1 1
       objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 0bef2aed135da674796fbbe8dcfac6ba, type: 3}
+      propertyPath: m_TagString
+      value: Dice
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:
     - {fileID: 65702495048144492, guid: 0bef2aed135da674796fbbe8dcfac6ba, type: 3}
@@ -371,6 +375,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 38bb9ba6e66049618fdab33a67facd34, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DiceController
+  resetManager: {fileID: 0}
   cam: {fileID: 0}
   rb: {fileID: 0}
   cameraOffset: {x: -0.4, y: -0.25, z: 6}

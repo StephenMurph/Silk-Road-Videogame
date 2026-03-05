@@ -51,13 +51,16 @@ public class WorldMapUI : MonoBehaviour
             Debug.Log($"WorldMapUI: towns after generate = {townSystem.towns.Count}");
         }
 
-        // Decide starting town EVERY time BuildMap runs
-        if (townSystem.towns.Count > 0)
+        if (townSystem.towns.Count > 0 && dots.Count == 0)
         {
             if (startAtRandomTown)
                 currentTownId = Random.Range(0, townSystem.towns.Count);
             else
                 currentTownId = Mathf.Clamp(currentTownId, 0, townSystem.towns.Count - 1);
+        }
+        else
+        {
+            currentTownId = Mathf.Clamp(currentTownId, 0, townSystem.towns.Count - 1);
         }
 
         // ALWAYS notify listeners of current town
@@ -129,5 +132,26 @@ public class WorldMapUI : MonoBehaviour
         float x = Mathf.Lerp(r.xMin, r.xMax, nz.x);
         float y = Mathf.Lerp(r.yMin, r.yMax, nz.y);
         return new Vector2(x, y);
+    }
+    
+    public void SetCurrentTown(int id, bool refreshUI = true)
+    {
+        currentTownId = Mathf.Clamp(id, 0, townSystem.towns.Count - 1);
+        CurrentTownChanged?.Invoke(currentTownId);
+
+        if (refreshUI)
+            RefreshSelectableDots();
+    }
+
+    /// <summary>
+    /// Shows the map UI again (after travel finishes)
+    /// </summary>
+    public void OpenMap()
+    {
+        if (mapRootToClose) mapRootToClose.SetActive(true);
+        else transform.root.gameObject.SetActive(true);
+
+        // Make sure dots reflect the latest currentTownId
+        RefreshSelectableDots();
     }
 }

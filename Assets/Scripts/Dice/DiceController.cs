@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System;
+using Random = UnityEngine.Random;
 
 public class DiceController : MonoBehaviour
 {
@@ -29,14 +31,13 @@ public class DiceController : MonoBehaviour
 
     private bool thrown;
     private float stillTimer;
-    
-    public System.Action<int> OnRolled;
 
-    private List<(int value, Transform t)> faces = new();
+    public Action<int> OnRolled;
+
+    private readonly List<(int value, Transform t)> faces = new();
 
     void Awake()
     {
-        // Always prefer the camera that renders the game view.
         if (!cam)
         {
             cam = Camera.main;
@@ -49,20 +50,15 @@ public class DiceController : MonoBehaviour
 
         if (!rb) rb = GetComponent<Rigidbody>();
 
-        Debug.Log($"[DiceController] Using camera: {(cam ? cam.name : "NULL")} tag={(cam ? cam.tag : "NULL")}");
         CacheFaces();
-        
+
         if (!resetManager)
             resetManager = FindFirstObjectByType<PhysicsResetManager>();
     }
-    
+
     void Start()
     {
-        rb.isKinematic = true;
-
-        // snap immediately so it's not flying in from world origin
-        if (cam)
-            transform.position = GetHoverTarget();
+        PrepareForHover();
     }
 
     void Update()
@@ -79,15 +75,30 @@ public class DiceController : MonoBehaviour
         }
     }
 
+    void PrepareForHover()
+    {
+        thrown = false;
+        stillTimer = 0f;
+
+        if (rb)
+        {
+            rb.isKinematic = true;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        if (cam)
+            transform.position = GetHoverTarget();
+    }
+
     Vector3 GetHoverTarget()
     {
-        Vector3 target =
-            cam.transform.position +
-            cam.transform.right * cameraOffset.x +
-            cam.transform.up * cameraOffset.y +
-            cam.transform.forward * cameraOffset.z;
+        if (!cam) return transform.position;
 
-        return target;
+        return cam.transform.position +
+               cam.transform.right * cameraOffset.x +
+               cam.transform.up * cameraOffset.y +
+               cam.transform.forward * cameraOffset.z;
     }
 
     void HoverInFrontOfCamera()
@@ -95,8 +106,6 @@ public class DiceController : MonoBehaviour
         if (!cam) return;
 
         Vector3 target = GetHoverTarget();
-
-        // Smooth follow (move a fraction toward target each frame)
         float t = 1f - Mathf.Exp(-followSpeed * Time.deltaTime);
         transform.position = Vector3.Lerp(transform.position, target, t);
     }
@@ -108,7 +117,7 @@ public class DiceController : MonoBehaviour
 
     void CheckClick()
     {
-        if (Mouse.current == null) return;
+        if (Mouse.current == null || cam == null) return;
 
         if (Mouse.current.leftButton.wasPressedThisFrame)
         {
@@ -116,18 +125,20 @@ public class DiceController : MonoBehaviour
 
             if (Physics.Raycast(ray, out RaycastHit hit))
             {
-                if (hit.transform == transform)
-                {
+                // IMPORTANT: works even if collider is on a child
+                if (hit.transform == transform || hit.transform.IsChildOf(transform))
                     ThrowDice();
-                }
             }
         }
     }
 
     void ThrowDice()
     {
-        resetManager.Capture();
+        resetManager?.Capture();
+
         thrown = true;
+        stillTimer = 0f;
+
         rb.isKinematic = false;
 
         Vector3 vel = cam.transform.forward * throwForward + Vector3.up * throwUp;
@@ -145,14 +156,14 @@ public class DiceController : MonoBehaviour
             if (stillTimer > settleTime)
             {
                 int result = GetTopFace();
-                
+
                 resetManager?.RestoreAnimated();
-                
+
                 Debug.Log("Dice Result: " + result);
-                
-                OnRolled?.Invoke(result); 
-                
-                Destroy(gameObject);
+                OnRolled?.Invoke(result);
+
+                // ready for the next click/roll
+                PrepareForHover();
             }
         }
         else
@@ -163,6 +174,8 @@ public class DiceController : MonoBehaviour
 
     void CacheFaces()
     {
+        faces.Clear();
+
         Transform root = transform.Find("Faces");
         if (!root) return;
 
@@ -181,7 +194,6 @@ public class DiceController : MonoBehaviour
         foreach (var f in faces)
         {
             float dot = Vector3.Dot(f.t.up, Vector3.up);
-
             if (dot > best)
             {
                 best = dot;

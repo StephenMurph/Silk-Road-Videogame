@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -43,6 +44,14 @@ public class PlayerMovementController : MonoBehaviour
 
     private Rigidbody pawnRb;
     private Collider pawnCol;
+    
+    // --- Travel Loop State ---
+    private Coroutine travelLoopRoutine;
+
+    private bool waitingForDice;
+    private int lastDiceResult;
+    private int diceRollsThisTurn;
+    private int diceSumThisTurn;
 
     public int currentTownId;
     public int nextTownId = -1;
@@ -94,21 +103,34 @@ public class PlayerMovementController : MonoBehaviour
     {
         nextTownId = Mathf.Clamp(newTownId, 0, townSystem.towns.Count - 1);
 
-        // 1) Build hop spaces FIRST (must succeed)
-        if (!BuildSpacesForEdge(currentTownId, nextTownId))
+        // (Optional) don’t allow selecting the same town
+        if (nextTownId == currentTownId)
         {
-            Debug.LogWarning($"No hop spaces for edge {currentTownId}->{nextTownId}. Did roads generate this session?");
+            Debug.Log("Selected current town; no travel started.");
             return;
         }
 
-        // 2) Spawn pawn exactly on the first “after town” space
-        SpawnOrMovePawnOnEdgeStart(currentTownId, nextTownId);
+        // Build hop spaces FIRST
+        BuildSpacesForEdge(currentTownId, nextTownId);
 
-        // 3) Camera follow
+        if (activeSpaces == null || activeSpaces.Count < 2)
+        {
+            Debug.LogWarning($"No spaces for edge {currentTownId}->{nextTownId}");
+            return;
+        }
+
+        // Spawn pawn at correct start (use your new edge-start placement if you added it)
+        // If you didn’t add that method, keep your existing one:
+        // SpawnOrMovePawnInFrontOfTown(currentTownId, nextTownId);
+        SpawnOrMovePawnOnEdgeStart(currentTownId, nextTownId); // <- recommended
+
         EnterTravelMode();
 
-        // 4) Dice
-        SpawnDice();
+        // Stop any existing travel loop and start a new one
+        if (travelLoopRoutine != null)
+            StopCoroutine(travelLoopRoutine);
+
+        travelLoopRoutine = StartCoroutine(TravelLoop());
     }
 
     private void SpawnDice()
@@ -119,8 +141,7 @@ public class PlayerMovementController : MonoBehaviour
             return;
         }
 
-        if (activeDice != null)
-            Destroy(activeDice.gameObject);
+        if (activeDice != null) return; // keep existing dice
 
         var go = Instantiate(dicePrefab, Vector3.zero, Quaternion.identity);
 
@@ -132,17 +153,98 @@ public class PlayerMovementController : MonoBehaviour
             return;
         }
 
-        // Hook result callback
+        activeDice.OnRolled -= OnDiceRolled; // safety
         activeDice.OnRolled += OnDiceRolled;
     }
 
     private void OnDiceRolled(int result)
     {
-        // Stop any current hop
-        if (hopRoutine != null)
-            StopCoroutine(hopRoutine);
+        lastDiceResult = result;
+        waitingForDice = false;
+    }
+    
+    private IEnumerator WaitForDiceResult()
+    {
+        waitingForDice = true;
+        lastDiceResult = 0;
 
-        hopRoutine = StartCoroutine(HopSpaces(result));
+        while (waitingForDice)
+            yield return null;
+    }
+    
+    private IEnumerator RollTwoDiceAndGetSum(Action<int> onSumReady)
+    {
+        diceRollsThisTurn = 0;
+        diceSumThisTurn = 0;
+
+        SpawnDice(); // ensure die exists
+
+        while (diceRollsThisTurn < 2)
+        {
+            yield return WaitForDiceResult();
+
+            diceRollsThisTurn++;
+            diceSumThisTurn += lastDiceResult;
+
+            Debug.Log($"Roll {diceRollsThisTurn}/2 = {lastDiceResult} (sum={diceSumThisTurn})");
+
+            // small pause between rolls so player can read it
+            yield return new WaitForSeconds(0.15f);
+        }
+
+        // turn complete → destroy dice
+        if (activeDice != null)
+        {
+            activeDice.OnRolled -= OnDiceRolled;
+            Destroy(activeDice.gameObject);
+            activeDice = null;
+        }
+
+        onSumReady?.Invoke(diceSumThisTurn);
+    }
+    
+    private IEnumerator TravelLoop()
+    {
+        while (pawnInstance != null && activeSpaces != null && activeSpaces.Count >= 2)
+        {
+            // Arrived?
+            if (currentSpaceIndex >= activeSpaces.Count - 1)
+                break;
+
+            // 2 rolls -> move sum
+            yield return DoTravelTurn();
+
+            // Arrived after moving?
+            if (currentSpaceIndex >= activeSpaces.Count - 1)
+                break;
+
+            yield return new WaitForSeconds(0.2f);
+        }
+
+        // ARRIVAL: do it once, here.
+        currentTownId = nextTownId;
+        nextTownId = -1;
+
+        // cleanup dice if somehow still alive
+        if (activeDice != null)
+        {
+            activeDice.OnRolled -= OnDiceRolled;
+            Destroy(activeDice.gameObject);
+            activeDice = null;
+        }
+
+        EnterTownMode();
+
+        Debug.Log($"Arrived. Now at town {currentTownId}. Ready to pick next destination.");
+        travelLoopRoutine = null;
+    }
+    
+    private IEnumerator DoTravelTurn()
+    {
+        int sum = 0;
+        yield return RollTwoDiceAndGetSum(s => sum = s);
+
+        yield return HopSpaces(sum);
     }
 
     private IEnumerator HopSpaces(int hops)
@@ -208,13 +310,6 @@ public class PlayerMovementController : MonoBehaviour
             }
 
             currentSpaceIndex = i;
-        }
-
-        // If we reached the end, we can consider ourselves arrived:
-        if (currentSpaceIndex >= activeSpaces.Count - 1)
-        {
-            currentTownId = nextTownId;
-            Debug.Log($"Arrived at town {currentTownId}");
         }
 
         hopRoutine = null;
