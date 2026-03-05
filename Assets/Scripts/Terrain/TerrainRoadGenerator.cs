@@ -6,6 +6,36 @@ public static class TerrainRoadGenerator
 {
     public static Texture2D roadMask01; // R channel stores 0..1 road influence
     private static int roadMaskW, roadMaskH;
+    public static readonly Dictionary<string, List<Vector2>> roadCenterlineNZ = new();
+    
+    private static string Key(Vector2 a, Vector2 b)
+    {
+        // round to 1e-5 (good enough & stable)
+        float ax = Mathf.Round(a.x * 100000f) / 100000f;
+        float az = Mathf.Round(a.y * 100000f) / 100000f;
+        float bx = Mathf.Round(b.x * 100000f) / 100000f;
+        float bz = Mathf.Round(b.y * 100000f) / 100000f;
+        return $"{ax},{az}->{bx},{bz}";
+    }
+
+    public static bool TryGetRoadPathNZ(Vector2 aNZ, Vector2 bNZ, out List<Vector2> pathNZ)
+    {
+        return roadCenterlineNZ.TryGetValue(Key(aNZ, bNZ), out pathNZ) && pathNZ != null && pathNZ.Count > 1;
+    }
+
+    private static void StoreRoadPath(Vector2 aNZ, Vector2 bNZ, List<Vector2> path)
+    {
+        if (path == null || path.Count < 2) return;
+
+        // store A->B
+        roadCenterlineNZ[Key(aNZ, bNZ)] = new List<Vector2>(path);
+
+        // store B->A (reverse)
+        var rev = new List<Vector2>(path);
+        rev.Reverse();
+        roadCenterlineNZ[Key(bNZ, aNZ)] = rev;
+    }
+    
     /*public static void GenerateRandomRoadBetweenTwoPoints(
         Terrain terrain,
         Func<float, float, float> desertMask01,   
@@ -387,7 +417,11 @@ public static class TerrainRoadGenerator
             }
 
             EnsureRoadMask(data);
-            if (clearRoadMaskFirst) ClearRoadMask();
+            if (clearRoadMaskFirst)
+            {
+                ClearRoadMask();
+                roadCenterlineNZ.Clear();
+            }
 
             // We want to paint multiple paths into the same alphamap buffer.
             int aw = data.alphamapWidth;
@@ -414,6 +448,8 @@ public static class TerrainRoadGenerator
                 );
 
                 if (path == null || path.Count < 2) continue;
+                
+                StoreRoadPath(e.aNZ, e.bNZ, path);
 
                 // paint this path into the same maps buffer
                 PaintPathLayersIntoMaps(

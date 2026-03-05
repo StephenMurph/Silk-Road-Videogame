@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using System;
+using Random = UnityEngine.Random;
 
 public class WorldMapUI : MonoBehaviour
 {
@@ -23,8 +25,11 @@ public class WorldMapUI : MonoBehaviour
 
     [Header("Close Map")]
     public GameObject mapRootToClose;
+    
+    public event Action<int> CurrentTownChanged;
 
     private readonly List<TownDotUI> dots = new();
+    public event Action<int> TownSelected;
 
     void Start()
     {
@@ -35,22 +40,29 @@ public class WorldMapUI : MonoBehaviour
     {
         var tex = terrainManager.BuildBiomeMapTexture(mapResolution);
         mapImage.texture = tex;
-        
+
         ClearDots();
+
+        // Ensure towns exist
         if (townSystem.towns.Count == 0)
         {
             Debug.Log("WorldMapUI: No towns yet — generating now...");
             townSystem.GenerateTownsAndRoads();
-            
-            if (townSystem.towns.Count > 0)
-            {
-                if (startAtRandomTown)
-                    currentTownId = Random.Range(0, townSystem.towns.Count);
-                else
-                    currentTownId = Mathf.Clamp(currentTownId, 0, townSystem.towns.Count - 1);
-            }
             Debug.Log($"WorldMapUI: towns after generate = {townSystem.towns.Count}");
         }
+
+        // Decide starting town EVERY time BuildMap runs
+        if (townSystem.towns.Count > 0)
+        {
+            if (startAtRandomTown)
+                currentTownId = Random.Range(0, townSystem.towns.Count);
+            else
+                currentTownId = Mathf.Clamp(currentTownId, 0, townSystem.towns.Count - 1);
+        }
+
+        // ALWAYS notify listeners of current town
+        CurrentTownChanged?.Invoke(currentTownId);
+
         SpawnTownDots();
         RefreshSelectableDots();
     }
@@ -105,8 +117,8 @@ public class WorldMapUI : MonoBehaviour
         }
 
         Debug.Log($"Accepted click {townId}. Closing map.");
-        currentTownId = townId;
-
+        TownSelected?.Invoke(townId);
+        
         if (mapRootToClose) mapRootToClose.SetActive(false);
         else transform.root.gameObject.SetActive(false); 
     }

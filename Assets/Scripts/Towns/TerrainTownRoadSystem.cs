@@ -159,7 +159,7 @@ public class TerrainTownRoadSystem : MonoBehaviour
             mountainMask01: mountainMask,
             edgeMask01: edgeMask,
             seed: townSeed ^ 0x51A71,
-            edgesNZ: mainEdges,
+            edgesNZ: branchEdges,
             gridSize: gridSize,
             desertCutoff: desertCutoff,
             maxSlopeDegrees: maxSlopeDegrees,
@@ -171,8 +171,8 @@ public class TerrainTownRoadSystem : MonoBehaviour
             mountainAvoidance: mountainAvoidance,
             mountainBlockCutoff: mountainRoadBlockCutoff,
             edgeBlockCutoff: edgeBlockCutoff,
-            clearRoadMaskFirst: true,
-            roadAttraction: 0f
+            clearRoadMaskFirst: false,
+            roadAttraction: branchRoadAttraction
         );
     }
 
