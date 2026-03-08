@@ -54,7 +54,7 @@ public class PhysicsResetManager : MonoBehaviour
         Debug.Log($"[PhysicsResetManager] Captured {snap.Count} rigidbodies.");
     }
 
-    // --- Instant snap restore (keep this)
+    // --- Instant snap restore
     public void RestoreInstant()
     {
         if (!hasSnapshot)
@@ -172,8 +172,7 @@ public class PhysicsResetManager : MonoBehaviour
             rb.useGravity = s.useGravity;
             rb.constraints = s.constraints;
             rb.isKinematic = s.wasKinematic;
-
-            // Usually for a board reset, you want everything settled:
+            
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
             rb.Sleep();

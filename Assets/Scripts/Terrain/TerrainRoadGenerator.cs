@@ -450,8 +450,7 @@ public static class TerrainRoadGenerator
                 if (path == null || path.Count < 2) continue;
                 
                 StoreRoadPath(e.aNZ, e.bNZ, path);
-
-                // paint this path into the same maps buffer
+                
                 PaintPathLayersIntoMaps(
                     terrain,
                     desertMask01,

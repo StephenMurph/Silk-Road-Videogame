@@ -1,13 +1,13 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using System;
 using Random = UnityEngine.Random;
 
 public class DiceController : MonoBehaviour
 {
     [Header("Refs")]
-    public PhysicsResetManager resetManager;
     public Camera cam;
     public Rigidbody rb;
 
@@ -29,12 +29,22 @@ public class DiceController : MonoBehaviour
     public float settleAngular = 0.2f;
     public float settleTime = 0.6f;
 
-    private bool thrown;
-    private float stillTimer;
+    [Header("Result Reveal")]
+    public float revealMoveDuration = 0.35f;
+    public float revealHoldDuration = 0.45f;
+    public float revealFollowSharpness = 14f;
 
     public Action<int> OnRolled;
 
     private readonly List<(int value, Transform t)> faces = new();
+
+    public BoxCollider dicecolider;
+    private bool thrown;
+    private bool settled;
+    private bool revealing;
+    private bool showingResult;
+    private int shownResult = -1;
+    private float stillTimer;
 
     void Awake()
     {
@@ -49,11 +59,9 @@ public class DiceController : MonoBehaviour
         }
 
         if (!rb) rb = GetComponent<Rigidbody>();
+        if (!dicecolider) dicecolider = GetComponent<BoxCollider>();
 
         CacheFaces();
-
-        if (!resetManager)
-            resetManager = FindFirstObjectByType<PhysicsResetManager>();
     }
 
     void Start()
@@ -63,6 +71,14 @@ public class DiceController : MonoBehaviour
 
     void Update()
     {
+        if (showingResult)
+        {
+            FollowCameraWhileShowingResult();
+            return;
+        }
+
+        if (revealing || settled) return;
+
         if (!thrown)
         {
             HoverInFrontOfCamera();
@@ -78,6 +94,10 @@ public class DiceController : MonoBehaviour
     void PrepareForHover()
     {
         thrown = false;
+        settled = false;
+        revealing = false;
+        showingResult = false;
+        shownResult = -1;
         stillTimer = 0f;
 
         if (rb)
@@ -86,6 +106,8 @@ public class DiceController : MonoBehaviour
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
+
+        if (dicecolider) dicecolider.enabled = true;
 
         if (cam)
             transform.position = GetHoverTarget();
@@ -125,7 +147,6 @@ public class DiceController : MonoBehaviour
 
             if (Physics.Raycast(ray, out RaycastHit hit))
             {
-                // IMPORTANT: works even if collider is on a child
                 if (hit.transform == transform || hit.transform.IsChildOf(transform))
                     ThrowDice();
             }
@@ -134,7 +155,7 @@ public class DiceController : MonoBehaviour
 
     void ThrowDice()
     {
-        resetManager?.Capture();
+        if (thrown || settled || revealing || showingResult) return;
 
         thrown = true;
         stillTimer = 0f;
@@ -156,20 +177,122 @@ public class DiceController : MonoBehaviour
             if (stillTimer > settleTime)
             {
                 int result = GetTopFace();
-
-                resetManager?.RestoreAnimated();
-
-                Debug.Log("Dice Result: " + result);
-                OnRolled?.Invoke(result);
-
-                // ready for the next click/roll
-                PrepareForHover();
+                StartCoroutine(RevealResultRoutine(result));
             }
         }
         else
         {
             stillTimer = 0f;
         }
+    }
+
+    private IEnumerator RevealResultRoutine(int result)
+    {
+        if (revealing) yield break;
+
+        revealing = true;
+        thrown = false;
+        settled = true;
+        stillTimer = 0f;
+
+        if (rb)
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+            rb.isKinematic = true;
+        }
+
+        if (dicecolider) dicecolider.enabled = false;
+
+        Vector3 startPos = transform.position;
+        Quaternion startRot = transform.rotation;
+
+        Vector3 targetPos = GetHoverTarget();
+        Quaternion targetRot = GetRevealRotationForResult(result);
+
+        float t = 0f;
+        float dur = Mathf.Max(0.01f, revealMoveDuration);
+
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float u = Mathf.Clamp01(t / dur);
+            float s = u * u * (3f - 2f * u);
+
+            transform.position = Vector3.Lerp(startPos, targetPos, s);
+            transform.rotation = Quaternion.Slerp(startRot, targetRot, s);
+
+            yield return null;
+        }
+
+        transform.position = targetPos;
+        transform.rotation = targetRot;
+
+        shownResult = result;
+        revealing = false;
+        showingResult = true;
+
+        yield return new WaitForSeconds(revealHoldDuration);
+
+        Debug.Log("Dice Result: " + result);
+        OnRolled?.Invoke(result);
+    }
+
+    private void FollowCameraWhileShowingResult()
+    {
+        if (!cam || shownResult < 0) return;
+
+        Vector3 targetPos = GetHoverTarget();
+        Quaternion targetRot = GetRevealRotationForResult(shownResult);
+
+        float t = 1f - Mathf.Exp(-revealFollowSharpness * Time.deltaTime);
+
+        transform.position = Vector3.Lerp(transform.position, targetPos, t);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, t);
+    }
+
+    private Quaternion GetRevealRotationForResult(int result)
+    {
+        if (!cam) return transform.rotation;
+
+        Transform face = GetFaceTransform(result);
+        if (!face) return transform.rotation;
+
+        Vector3 desiredFaceNormal = -cam.transform.forward;
+
+        Quaternion alignFaceToCamera =
+            Quaternion.FromToRotation(face.up, desiredFaceNormal) * transform.rotation;
+
+        Quaternion saved = transform.rotation;
+        transform.rotation = alignFaceToCamera;
+
+        Vector3 faceRight = face.right;
+        Vector3 desiredRight = cam.transform.right;
+
+        Vector3 projectedFaceRight = Vector3.ProjectOnPlane(faceRight, desiredFaceNormal).normalized;
+        Vector3 projectedDesiredRight = Vector3.ProjectOnPlane(desiredRight, desiredFaceNormal).normalized;
+
+        Quaternion twistFix = Quaternion.identity;
+        if (projectedFaceRight.sqrMagnitude > 0.0001f && projectedDesiredRight.sqrMagnitude > 0.0001f)
+        {
+            float signed = Vector3.SignedAngle(projectedFaceRight, projectedDesiredRight, desiredFaceNormal);
+            twistFix = Quaternion.AngleAxis(signed, desiredFaceNormal);
+        }
+
+        Quaternion finalRot = twistFix * transform.rotation;
+        transform.rotation = saved;
+
+        return finalRot;
+    }
+
+    private Transform GetFaceTransform(int value)
+    {
+        foreach (var f in faces)
+        {
+            if (f.value == value)
+                return f.t;
+        }
+        return null;
     }
 
     void CacheFaces()

@@ -12,6 +12,8 @@ GameObject:
   - component: {fileID: 1264146390818669074}
   - component: {fileID: 7145283280079836182}
   - component: {fileID: 8701593157125197703}
+  - component: {fileID: -6307710974652973503}
+  - component: {fileID: 9065918343953560674}
   m_Layer: 0
   m_Name: PlayerPrefab 1
   m_TagString: Untagged
@@ -87,9 +89,9 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2645880604847071920}
   serializedVersion: 5
-  m_Mass: 1
+  m_Mass: 3
   m_LinearDamping: 0
-  m_AngularDamping: 3
+  m_AngularDamping: 0.3
   m_CenterOfMass: {x: 0, y: 0, z: 0}
   m_InertiaTensor: {x: 1, y: 1, z: 1}
   m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
@@ -105,7 +107,54 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 1
   m_Constraints: 0
-  m_CollisionDetection: 1
+  m_CollisionDetection: 0
+--- !u!114 &-6307710974652973503
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2645880604847071920}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e78d8477504b4d6e85b41fd46fc50a74, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UprightStabilizer
+  rb: {fileID: 8701593157125197703}
+  uprightStrength: 80
+  uprightDamping: 12
+  diceTag: Dice
+  diceDisableSeconds: 5
+  minDiceImpulse: 0.5
+  proximityRadius: 2
+  minDiceSpeed: 1.2
+  proximityGraceSeconds: 0.35
+  fadeInDuration: 0.35
+  maxAssistAngle: 80
+  stabilizerWeight: 1
+--- !u!114 &9065918343953560674
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2645880604847071920}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c436428cb3646aa9e2ac2543973caf7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerMotor
+  terrain: {fileID: 0}
+  rb: {fileID: 0}
+  col: {fileID: 0}
+  groundOffset: 0.12
+  terrainProbeExtraHeight: 2
+  facingSmooth: 14
+  slopeAlignSmooth: 12
+  settleDuration: 0.35
+  spawnHopDuration: 2
+  spawnHopHeight: 8
+  spawnStartScale: 0.08
 --- !u!1001 &4687506737883935433
 PrefabInstance:
   m_ObjectHideFlags: 0

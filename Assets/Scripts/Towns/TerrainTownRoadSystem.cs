@@ -93,13 +93,11 @@ public class TerrainTownRoadSystem : MonoBehaviour
     var data = terrain.terrainData;
 
     SpawnTowns(data);
-
-    // --- Build a MAIN + BRANCH style edge list ---
+    
     var townsNZ = new List<Vector2>(towns.Count);
     for (int i = 0; i < towns.Count; i++)
         townsNZ.Add(towns[i].nz);
-
-    // This returns: [main chain edges first] + [optional cross-links]
+    
     var allEdges = TerrainRoadGenerator.BuildMainAndBranchEdges(
         townsNZ: townsNZ,
         seed: townSeed,
@@ -150,7 +148,7 @@ public class TerrainTownRoadSystem : MonoBehaviour
         roadAttraction: 0f
     );
 
-    // --- PASS 2: paint branches that prefer existing main road (do NOT clear) ---
+    // --- PASS 2: paint branches that prefer existing main road ---
     if (branchEdges.Count > 0 && branchRoadAttraction > 0f)
     {
         TerrainRoadGenerator.GenerateRoadNetwork(

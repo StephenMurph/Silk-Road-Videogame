@@ -102,15 +102,13 @@ public class PlayerMovementController : MonoBehaviour
     private void OnTownSelectedFromMap(int newTownId)
     {
         nextTownId = Mathf.Clamp(newTownId, 0, townSystem.towns.Count - 1);
-
-        // (Optional) don’t allow selecting the same town
+        
         if (nextTownId == currentTownId)
         {
             Debug.Log("Selected current town; no travel started.");
             return;
         }
-
-        // Build hop spaces FIRST
+        
         BuildSpacesForEdge(currentTownId, nextTownId);
 
         if (activeSpaces == null || activeSpaces.Count < 2)
@@ -118,15 +116,11 @@ public class PlayerMovementController : MonoBehaviour
             Debug.LogWarning($"No spaces for edge {currentTownId}->{nextTownId}");
             return;
         }
-
-        // Spawn pawn at correct start (use your new edge-start placement if you added it)
-        // If you didn’t add that method, keep your existing one:
-        // SpawnOrMovePawnInFrontOfTown(currentTownId, nextTownId);
-        SpawnOrMovePawnOnEdgeStart(currentTownId, nextTownId); // <- recommended
+        
+        SpawnOrMovePawnOnEdgeStart(currentTownId, nextTownId); 
 
         EnterTravelMode();
-
-        // Stop any existing travel loop and start a new one
+        
         if (travelLoopRoutine != null)
             StopCoroutine(travelLoopRoutine);
 
@@ -141,7 +135,7 @@ public class PlayerMovementController : MonoBehaviour
             return;
         }
 
-        if (activeDice != null) return; // keep existing dice
+        if (activeDice != null) return; 
 
         var go = Instantiate(dicePrefab, Vector3.zero, Quaternion.identity);
 
@@ -153,7 +147,7 @@ public class PlayerMovementController : MonoBehaviour
             return;
         }
 
-        activeDice.OnRolled -= OnDiceRolled; // safety
+        activeDice.OnRolled -= OnDiceRolled; 
         activeDice.OnRolled += OnDiceRolled;
     }
 
@@ -177,7 +171,7 @@ public class PlayerMovementController : MonoBehaviour
         diceRollsThisTurn = 0;
         diceSumThisTurn = 0;
 
-        SpawnDice(); // ensure die exists
+        SpawnDice(); 
 
         while (diceRollsThisTurn < 2)
         {
@@ -187,8 +181,7 @@ public class PlayerMovementController : MonoBehaviour
             diceSumThisTurn += lastDiceResult;
 
             Debug.Log($"Roll {diceRollsThisTurn}/2 = {lastDiceResult} (sum={diceSumThisTurn})");
-
-            // small pause between rolls so player can read it
+            
             yield return new WaitForSeconds(0.15f);
         }
 
@@ -207,25 +200,20 @@ public class PlayerMovementController : MonoBehaviour
     {
         while (pawnInstance != null && activeSpaces != null && activeSpaces.Count >= 2)
         {
-            // Arrived?
             if (currentSpaceIndex >= activeSpaces.Count - 1)
                 break;
-
-            // 2 rolls -> move sum
+            
             yield return DoTravelTurn();
-
-            // Arrived after moving?
+            
             if (currentSpaceIndex >= activeSpaces.Count - 1)
                 break;
 
             yield return new WaitForSeconds(0.2f);
         }
-
-        // ARRIVAL: do it once, here.
+        
         currentTownId = nextTownId;
         nextTownId = -1;
-
-        // cleanup dice if somehow still alive
+        
         if (activeDice != null)
         {
             activeDice.OnRolled -= OnDiceRolled;
@@ -263,14 +251,12 @@ public class PlayerMovementController : MonoBehaviour
         {
             Vector3 from = pawnInstance.position;
             Vector3 to = activeSpaces[i];
-
-            // Face direction of travel (flat)
+            
             Vector3 dir = (to - from);
             dir.y = 0f;
             if (dir.sqrMagnitude > 0.0001f)
                 pawnInstance.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
-
-            // Animate hop
+            
             float t = 0f;
             float dur = Mathf.Max(0.05f, hopDuration);
 
@@ -278,17 +264,14 @@ public class PlayerMovementController : MonoBehaviour
             {
                 t += Time.deltaTime;
                 float u = Mathf.Clamp01(t / dur);
-
-                // smoothstep
+                
                 float s = u * u * (3f - 2f * u);
 
                 Vector3 p = Vector3.Lerp(from, to, s);
-
-                // arc
+                
                 float arc = Mathf.Sin(u * Mathf.PI) * hopHeight;
                 p.y += arc;
-
-                // If you have a Rigidbody, use MovePosition for nicer physics sync
+                
                 if (pawnRb != null && !pawnRb.isKinematic)
                     pawnRb.MovePosition(p);
                 else
@@ -296,8 +279,7 @@ public class PlayerMovementController : MonoBehaviour
 
                 yield return null;
             }
-
-            // snap exactly to the space (grounded)
+            
             if (pawnRb != null && !pawnRb.isKinematic)
             {
                 pawnRb.position = to;
@@ -336,9 +318,7 @@ public class PlayerMovementController : MonoBehaviour
 
         if (activeSpaces == null || activeSpaces.Count < 2)
             return false;
-
-        // IMPORTANT: we do NOT pick "nearest to pawn" here anymore.
-        // The pawn will be placed based on the town end of the edge.
+        
         currentSpaceIndex = 0;
 
         Debug.Log($"Built {activeSpaces.Count} hop spaces for edge {fromTownId}->{toTownId}.");
@@ -355,7 +335,7 @@ public class PlayerMovementController : MonoBehaviour
         return -1;
     }
 
-    /*// --- Your existing spawn logic (kept) ---
+    /*// 
     public void SpawnOrMovePawnInFrontOfTown(int fromTownId, int toTownId)
     {
         if (!terrain || !townSystem) return;
@@ -536,7 +516,7 @@ public class PlayerMovementController : MonoBehaviour
     
     public void EnterTownMode()
     {
-        // pawn should not exist in town mode (as you want)
+        // pawn should not exist in town mode 
         DespawnPawnIfExists();
 
         if (!cameraFocus || !townSystem) return;
@@ -621,15 +601,12 @@ public class PlayerMovementController : MonoBehaviour
             if (reset && pawnRb)
                 reset.Register(pawnRb);
         }
-
-        // Pick a start space: "first space after town"
-        // Option A (recommended): pick the first space at least minDistanceFromTownWorld away from the town
+        
         Vector3 townPos = TownWorld(fromTownId);
 
         int startIndex = 0;
         float minDist2 = minDistanceFromTownWorld * minDistanceFromTownWorld;
-
-        // start from 0/1 depending on whether you want to allow space 0 to be "inside town"
+        
         for (int i = 0; i < activeSpaces.Count; i++)
         {
             Vector3 p = activeSpaces[i];
@@ -642,13 +619,11 @@ public class PlayerMovementController : MonoBehaviour
                 break;
             }
         }
-
-        // Safety: never allow startIndex to be the very last node
+        
         startIndex = Mathf.Clamp(startIndex, 0, activeSpaces.Count - 2);
 
         Vector3 spawnPos = activeSpaces[startIndex];
-
-        // Place pawn (physics-safe)
+        
         if (pawnRb != null && !pawnRb.isKinematic)
         {
             pawnRb.linearVelocity = Vector3.zero;
@@ -661,11 +636,9 @@ public class PlayerMovementController : MonoBehaviour
         {
             pawnInstance.position = spawnPos;
         }
-
-        // Set board index to match exactly
+        
         currentSpaceIndex = startIndex;
-
-        // Face along the road (toward next space)
+        
         Vector3 lookTo = activeSpaces[startIndex + 1];
         Vector3 dir = lookTo - spawnPos;
         dir.y = 0f;

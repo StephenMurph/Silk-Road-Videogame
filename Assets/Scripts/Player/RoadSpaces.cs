@@ -48,26 +48,21 @@ public static List<Vector3> BuildSpacesWorld(Terrain terrain, List<Vector2> path
 
         while (distSinceLast + remaining >= spacingWorld)
         {
-            float need = spacingWorld - distSinceLast;      // how far into this segment to place next point
-            float t = need / remaining;                     // fraction along the remaining part
-
-            // advance 'a' forward by 'need'
+            float need = spacingWorld - distSinceLast;      
+            float t = need / remaining;                     
+            
             a += dir * need;
-
-            // ground it
+            
             Vector3 p = new Vector3(a.x, 0f, a.z);
             p.y = terrain.SampleHeight(p) + terrain.transform.position.y + yOffset;
 
             spaces.Add(p);
-
-            // we placed a point exactly spacingWorld away
+            
             distSinceLast = 0f;
-
-            // shorten what’s left of this segment
+            
             remaining -= need;
         }
-
-        // whatever segment length is left contributes to the next spacing
+        
         distSinceLast += remaining;
 
         prev = cur;

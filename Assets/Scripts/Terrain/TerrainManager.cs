@@ -245,9 +245,9 @@ public class TerrainManager : MonoBehaviour
                 float grass = Mathf.Pow(1f - desert, 3.0f);
 
                 float road = TerrainRoadGenerator.SampleRoadMask01(terrain.terrainData, nx, nz);
-                grass *= (1f - road);          // 1.0 means no road, 0.0 means full road
+                grass *= (1f - road);          
 
-                // make roads “hard” (no grass even at edges):
+                
                 if (road > 0.15f) grass = 0f;
 
                 return grass;
@@ -320,8 +320,7 @@ public class TerrainManager : MonoBehaviour
     private float[,] GenerateHeights(int width, int height, Vector3 terrainSize)
     {
         float[,] heights = new float[height, width];
-
-        // Separate PRNG streams so grass + desert patterns differ but remain deterministic
+        
         System.Random prngGrass = new System.Random(seed);
         System.Random prngDesert = new System.Random(seed * 73856093 ^ 19349663);
 
@@ -493,7 +492,7 @@ private static float FractalPerlin01(
         float sx = nx * (terrainSize.x / scale) * frequency + octaveOffsets[i].x;
         float sz = nz * (terrainSize.z / scale) * frequency + octaveOffsets[i].y;
 
-        float n = Mathf.PerlinNoise(sx, sz); // 0..1
+        float n = Mathf.PerlinNoise(sx, sz);
         if (ridged) n = 1f - Mathf.Abs(n * 2f - 1f);
 
         sum += n * amplitude;
@@ -522,7 +521,7 @@ private static float DesertDunes01(
         float sx = nx * (terrainSize.x / scale) * frequency + octaveOffsets[i].x;
         float sz = nz * (terrainSize.z / scale) * frequency + octaveOffsets[i].y;
 
-        float n = Mathf.PerlinNoise(sx, sz); // 0..1
+        float n = Mathf.PerlinNoise(sx, sz); 
         
         float centered = n * 2f - 1f;
 
@@ -560,15 +559,13 @@ private float MountainMaskFromRegions01(float nx, float nz)
 
 private float CactusDesertInteriorMask01(float nx, float nz)
 {
-    // Coast is textured as desert via edgeBeachStrength, but we don't want cactuses there.
-    // So we remove the edge contribution using the edge mask.
+
     if (!edgeDropoff || cactusCoastBlock01 <= 0f) return DesertMaskFromRegions01(nx, nz);
 
     float desert = DesertMaskFromRegions01(nx, nz);
-    float e = EdgeMask01(nx, nz) * edgeBeachStrength; // same signal that pushes the coast to desert
+    float e = EdgeMask01(nx, nz) * edgeBeachStrength; 
 
-    // If we're close enough to the edge (e is strong), treat as non-desert for cactus purposes.
-    // cactusCoastBlock01 is the strength threshold.
+
     if (e >= cactusCoastBlock01) return 0f;
 
     return desert;

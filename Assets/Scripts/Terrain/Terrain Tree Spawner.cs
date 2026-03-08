@@ -148,8 +148,7 @@ public static class TerrainTreeSpawner
                 lightmapColor = Color.white
             });
         }
-
-        // Apply
+        
         if (clearExistingTrees)
         {
             data.treeInstances = instances.ToArray();
