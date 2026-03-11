@@ -5,87 +5,141 @@ public class CameraFollowPlayer : MonoBehaviour
 {
     public Transform target;
 
-    [Header("Distance")]
-    public float distance = 16f;
-    public float height = 12f;
+    [Header("Orbit")]
+    public float yaw = 0f;
+    public float pitch = 58f;
+    public float minPitch = 35f;
+    public float maxPitch = 75f;
 
-    [Header("Rotation")]
-    public float orbitSpeed = 120f;
-    public float currentYaw = 0f;
+    [Header("Zoom")]
+    public float distance = 18f;
+    public float minDistance = 8f;
+    public float maxDistance = 30f;
+    public float zoomStepKeyboard = 18f;
+    public float zoomStepScroll = 12f;
+    public float zoomSmooth = 10f;
+
+    [Header("Rotation Input")]
+    public float keyboardYawSpeed = 120f;
+    public float mouseYawSpeed = 0.22f;
+    public float mousePitchSpeed = 0.16f;
 
     [Header("Follow")]
-    public float followSmooth = 6f;
+    public float normalFollowSmooth = 4.5f;
+    public float looseFollowSmooth = 1.8f;
+    public float currentFollowSmooth = 4.5f;
+    public Vector3 targetLookOffset = new Vector3(0f, 1.5f, 0f);
 
-    private Vector3 currentVelocity;
+    private Vector3 pivotPosition;
+    private Vector3 pivotVelocity;
+
+    private float targetDistance;
+    private bool initialized;
 
     public void SetTarget(Transform newTarget, bool snap = false)
     {
         target = newTarget;
-        if (snap && target)
+
+        if (!target) return;
+
+        if (!initialized || snap)
         {
-            currentVelocity = Vector3.zero;
+            pivotPosition = target.position;
+            pivotVelocity = Vector3.zero;
+            targetDistance = distance;
+            initialized = true;
             SnapNow();
         }
+    }
+
+    public void SetLooseFollow(bool loose)
+    {
+        currentFollowSmooth = loose ? looseFollowSmooth : normalFollowSmooth;
     }
 
     public void SnapNow()
     {
         if (!target) return;
 
-        Quaternion rot = Quaternion.Euler(0f, currentYaw, 0f);
-        Vector3 offset = rot * new Vector3(0, 0, -distance);
-        offset.y = height;
+        Vector3 focus = target.position + targetLookOffset;
+        Vector3 camPos = ComputeOrbitPosition(focus, distance);
 
-        transform.position = target.position + offset;
-        transform.LookAt(target.position + Vector3.up * 1.5f);
+        transform.position = camPos;
+        transform.rotation = Quaternion.LookRotation((focus - camPos).normalized, Vector3.up);
+    }
+
+    void Awake()
+    {
+        targetDistance = distance;
+        currentFollowSmooth = normalFollowSmooth;
     }
 
     void LateUpdate()
     {
         if (!target) return;
 
-        HandleOrbitInput();
+        HandleInput();
 
-        Quaternion rot = Quaternion.Euler(0f, currentYaw, 0f);
-        Vector3 offset = rot * new Vector3(0, 0, -distance);
-        offset.y = height;
-
-        Vector3 desiredPosition = target.position + offset;
-
-        transform.position = Vector3.SmoothDamp(
-            transform.position,
-            desiredPosition,
-            ref currentVelocity,
-            1f / Mathf.Max(0.0001f, followSmooth)
+        float followSmoothTime = 1f / Mathf.Max(0.0001f, currentFollowSmooth);
+        pivotPosition = Vector3.SmoothDamp(
+            pivotPosition,
+            target.position,
+            ref pivotVelocity,
+            followSmoothTime
         );
 
-        transform.LookAt(target.position + Vector3.up * 1.5f);
+        distance = Mathf.Lerp(distance, targetDistance, 1f - Mathf.Exp(-zoomSmooth * Time.deltaTime));
+
+        Vector3 focus = pivotPosition + targetLookOffset;
+        Vector3 camPos = ComputeOrbitPosition(focus, distance);
+
+        transform.position = camPos;
+        transform.rotation = Quaternion.LookRotation((focus - camPos).normalized, Vector3.up);
     }
 
-    void HandleOrbitInput()
+    void HandleInput()
     {
-        if (Keyboard.current == null) return;
+        if (Keyboard.current != null)
+        {
+            float yawInput = 0f;
+            if (Keyboard.current.leftArrowKey.isPressed || Keyboard.current.aKey.isPressed)
+                yawInput -= 1f;
+            if (Keyboard.current.rightArrowKey.isPressed || Keyboard.current.dKey.isPressed)
+                yawInput += 1f;
 
-        float input = 0f;
+            yaw += yawInput * keyboardYawSpeed * Time.deltaTime;
 
-        if (Keyboard.current.leftArrowKey.isPressed || Keyboard.current.aKey.isPressed)
-            input -= 1f;
+            float zoomInput = 0f;
+            if (Keyboard.current.upArrowKey.isPressed || Keyboard.current.wKey.isPressed)
+                zoomInput -= 1f;
+            if (Keyboard.current.downArrowKey.isPressed || Keyboard.current.sKey.isPressed)
+                zoomInput += 1f;
 
-        if (Keyboard.current.rightArrowKey.isPressed || Keyboard.current.dKey.isPressed)
-            input += 1f;
+            targetDistance += zoomInput * zoomStepKeyboard * Time.deltaTime;
+        }
 
-        currentYaw += input * orbitSpeed * Time.deltaTime;
+        if (Mouse.current != null)
+        {
+            float scroll = Mouse.current.scroll.ReadValue().y;
+            if (Mathf.Abs(scroll) > 0.01f)
+                targetDistance -= scroll * zoomStepScroll * 0.01f;
+
+            if (Mouse.current.rightButton.isPressed)
+            {
+                Vector2 delta = Mouse.current.delta.ReadValue();
+                yaw += delta.x * mouseYawSpeed;
+                pitch -= delta.y * mousePitchSpeed;
+            }
+        }
+
+        pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        targetDistance = Mathf.Clamp(targetDistance, minDistance, maxDistance);
     }
-    
-    public void SnapToTarget()
+
+    Vector3 ComputeOrbitPosition(Vector3 focus, float usedDistance)
     {
-        if (!target) return;
-
-        Quaternion rot = Quaternion.Euler(0f, currentYaw, 0f);
-        Vector3 offset = rot * new Vector3(0, 0, -distance);
-        offset.y = height;
-
-        transform.position = target.position + offset;
-        transform.LookAt(target.position + Vector3.up * 1.5f);
+        Quaternion orbitRot = Quaternion.Euler(pitch, yaw, 0f);
+        Vector3 offset = orbitRot * new Vector3(0f, 0f, -usedDistance);
+        return focus + offset;
     }
 }

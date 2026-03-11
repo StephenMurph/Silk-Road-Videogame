@@ -38,7 +38,7 @@ public class DiceController : MonoBehaviour
 
     private readonly List<(int value, Transform t)> faces = new();
 
-    public BoxCollider dicecolider;
+    public BoxCollider diceColider;
     private bool thrown;
     private bool settled;
     private bool revealing;
@@ -59,7 +59,7 @@ public class DiceController : MonoBehaviour
         }
 
         if (!rb) rb = GetComponent<Rigidbody>();
-        if (!dicecolider) dicecolider = GetComponent<BoxCollider>();
+        if (!diceColider) diceColider = GetComponent<BoxCollider>();
 
         CacheFaces();
     }
@@ -106,8 +106,10 @@ public class DiceController : MonoBehaviour
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
+        
+        if (diceColider) diceColider.isTrigger = true;
 
-        if (dicecolider) dicecolider.enabled = true;
+        if (diceColider) diceColider.enabled = true;
 
         if (cam)
             transform.position = GetHoverTarget();
@@ -145,7 +147,7 @@ public class DiceController : MonoBehaviour
         {
             Ray ray = cam.ScreenPointToRay(Mouse.current.position.ReadValue());
 
-            if (Physics.Raycast(ray, out RaycastHit hit))
+            if (Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, ~0, QueryTriggerInteraction.Collide))
             {
                 if (hit.transform == transform || hit.transform.IsChildOf(transform))
                     ThrowDice();
@@ -159,6 +161,12 @@ public class DiceController : MonoBehaviour
 
         thrown = true;
         stillTimer = 0f;
+
+        if (diceColider)
+        {
+            diceColider.enabled = true;
+            diceColider.isTrigger = false;
+        }
 
         rb.isKinematic = false;
 
@@ -202,7 +210,7 @@ public class DiceController : MonoBehaviour
             rb.isKinematic = true;
         }
 
-        if (dicecolider) dicecolider.enabled = false;
+        if (diceColider) diceColider.enabled = false;
 
         Vector3 startPos = transform.position;
         Quaternion startRot = transform.rotation;

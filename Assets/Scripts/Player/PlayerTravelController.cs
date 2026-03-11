@@ -21,7 +21,7 @@ public class PlayerTravelController : MonoBehaviour
 
     [Header("Player")]
     [SerializeField] private GameObject playerPrefab;
-    [SerializeField] private PlayerMotor player;
+    private PlayerMotor player;
 
     [Header("Dice")]
     [SerializeField] private GameObject dicePrefab;
@@ -31,8 +31,8 @@ public class PlayerTravelController : MonoBehaviour
     [Header("Path / Hops")]
     [SerializeField] private float minDistanceFromTownWorld = 12f;
     [SerializeField] private float hopSpacingWorld = 8f;
-    [SerializeField] private float hopDuration = 0.18f;
-    [SerializeField] private float hopHeight = 1.2f;
+    [SerializeField] private float hopDuration = 0.5f;
+    [SerializeField] private float hopHeight = 2f;
 
     [Header("Debug")]
     [SerializeField] private bool drawSpaces = true;
@@ -133,10 +133,7 @@ public class PlayerTravelController : MonoBehaviour
 
     private void OnCurrentTownChangedFromMap(int id)
     {
-        if (state != TravelState.Town) return;
-
         currentTownId = Mathf.Clamp(id, 0, townSystem.towns.Count - 1);
-        EnterTownMode();
     }
 
     private IEnumerator TravelSequence()
@@ -290,11 +287,19 @@ public class PlayerTravelController : MonoBehaviour
 
         Vector3 spawnPos = activeSpaces[startIndex];
         Vector3 forward = activeSpaces[startIndex + 1] - spawnPos;
+        
+        Vector3 flatForward = forward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude > 0.0001f)
+        {
+            cameraFollow.yaw = Quaternion.LookRotation(-flatForward.normalized, Vector3.up).eulerAngles.y;
+        }
+        
+        EnterTravelMode(false);
 
         yield return player.SpawnHopFromTown(townPos, spawnPos, forward);
 
         player.EnablePhysics();
-        EnterTravelMode();
     }
 
     private Vector3 GetForwardFromCurrentSpace()
@@ -352,6 +357,12 @@ public class PlayerTravelController : MonoBehaviour
 
         if (player != null)
             Destroy(player.gameObject);
+        
+        if (worldMapUI != null)
+        {
+            worldMapUI.SetCurrentTown(currentTownId, true, false);
+            worldMapUI.OpenMap();
+        }
 
         player = null;
 
@@ -365,17 +376,24 @@ public class PlayerTravelController : MonoBehaviour
 
         if (cameraFollow)
             cameraFollow.SetTarget(cameraFocus, true);
+        
+        if (worldMapUI != null)
+        {
+            worldMapUI.SetCurrentTown(currentTownId, true);
+            worldMapUI.OpenMap();
+        }
+
+        Debug.Log($"Entered Town Mode at town {currentTownId}. Map reopened.");
     }
 
-    private void EnterTravelMode()
+    private void EnterTravelMode(bool snap = false)
     {
-        if (!player || !cameraFocus) return;
+        if (!player || !cameraFollow) return;
 
-        cameraFocus.SetParent(player.transform);
-        cameraFocus.localPosition = Vector3.zero;
+        cameraFocus.SetParent(null);
+        cameraFocus.position = player.transform.position;
 
-        if (cameraFollow)
-            cameraFollow.SetTarget(cameraFocus, true);
+        cameraFollow.SetTarget(player.transform, snap);
     }
 
     private void OnDrawGizmosSelected()

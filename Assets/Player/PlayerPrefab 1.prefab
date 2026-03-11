@@ -152,8 +152,8 @@ MonoBehaviour:
   facingSmooth: 14
   slopeAlignSmooth: 12
   settleDuration: 0.35
-  spawnHopDuration: 2
-  spawnHopHeight: 8
+  spawnHopDuration: 1
+  spawnHopHeight: 15
   spawnStartScale: 0.08
 --- !u!1001 &4687506737883935433
 PrefabInstance:

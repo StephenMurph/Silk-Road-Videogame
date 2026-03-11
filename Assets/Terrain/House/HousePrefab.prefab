@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 4577626600994058320}
   - component: {fileID: 2440618130448154420}
   - component: {fileID: 3587927201981035806}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: HousePlaceHolder
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -99,7 +99,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2042132428107861008}
   - component: {fileID: 281393084206936761}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: HousePrefab
   m_TagString: Untagged
   m_Icon: {fileID: 0}

@@ -158,6 +158,14 @@ public class PlayerMotor : MonoBehaviour
             Vector3 start = transform.position;
             Vector3 endSpace = spaces[nextIndex];
 
+            // Look-ahead target:
+            // while moving to N, rotate toward N+1 if it exists,
+            // otherwise just face the current destination.
+            Vector3 lookTarget =
+                nextIndex < spaces.Count - 1
+                ? spaces[nextIndex + 1]
+                : endSpace;
+
             float t = 0f;
             float dur = Mathf.Max(0.05f, hopDuration);
 
@@ -177,14 +185,12 @@ public class PlayerMotor : MonoBehaviour
                 float arc = Mathf.Sin(u * Mathf.PI) * hopHeight;
                 Vector3 finalPos = groundPos + Vector3.up * arc;
 
-                Vector3 toNext = endSpace - transform.position;
-                Quaternion targetRot = GetTargetRotation(finalPos, toNext, false);
+                // Rotate gradually during the hop toward the look-ahead target
+                Vector3 desiredDir = lookTarget - finalPos;
+                Quaternion targetRot = GetTargetRotation(finalPos, desiredDir, false);
 
-                Quaternion smoothRot = Quaternion.Slerp(
-                    transform.rotation,
-                    targetRot,
-                    1f - Mathf.Exp(-Mathf.Max(facingSmooth, slopeAlignSmooth) * Time.deltaTime)
-                );
+                float rotT = 1f - Mathf.Exp(-Mathf.Max(facingSmooth, slopeAlignSmooth) * Time.deltaTime);
+                Quaternion smoothRot = Quaternion.Slerp(transform.rotation, targetRot, rotT);
 
                 if (rb)
                 {
@@ -199,23 +205,16 @@ public class PlayerMotor : MonoBehaviour
                 yield return null;
             }
 
+            // Land without a snap-rotation
             Vector3 landed = GetGroundedPosition(endSpace);
-            Vector3 landingForward =
-                nextIndex < spaces.Count - 1
-                ? (spaces[nextIndex + 1] - landed)
-                : (landed - spaces[nextIndex - 1]);
-
-            Quaternion landedRot = GetTargetRotation(landed, landingForward, true);
 
             if (rb)
             {
                 rb.position = landed;
-                rb.rotation = Quaternion.Slerp(rb.rotation, landedRot, 0.85f);
             }
             else
             {
                 transform.position = landed;
-                transform.rotation = Quaternion.Slerp(transform.rotation, landedRot, 0.85f);
             }
 
             currentIndex = nextIndex;

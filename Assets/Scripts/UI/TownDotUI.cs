@@ -17,6 +17,7 @@ public class TownDotUI : MonoBehaviour,
     public Color normalColor = Color.red;
     public Color hoverColor = Color.yellow;
     public Color disabledColor = new Color(0.4f, 0.1f, 0.1f);
+    public Color currentTownColor = Color.blue;
 
     public void Setup(int id, Vector2 nz, WorldMapUI mapUI)
     {
@@ -25,10 +26,14 @@ public class TownDotUI : MonoBehaviour,
         image.color = normalColor;
     }
 
-    public void SetSelectable(bool canSelect)
+    public void SetSelectable(bool canSelect, bool isCurrent)
     {
         selectable = canSelect;
-        image.color = selectable ? normalColor : disabledColor;
+
+        if (isCurrent)
+            image.color = currentTownColor;
+        else
+            image.color = selectable ? normalColor : disabledColor;
     }
 
     public void OnPointerEnter(PointerEventData eventData)
@@ -40,6 +45,12 @@ public class TownDotUI : MonoBehaviour,
     public void OnPointerExit(PointerEventData eventData)
     {
         image.color = selectable ? normalColor : disabledColor;
+    }
+    
+    public void SetCurrentTown(bool isCurrent)
+    {
+        if (isCurrent)
+            image.color = currentTownColor;
     }
 
     public void OnPointerClick(PointerEventData eventData)
