@@ -38,6 +38,10 @@ public class PlayerTravelController : MonoBehaviour
     [SerializeField] private bool drawSpaces = true;
     [SerializeField] private float gizmoSphereRadius = 0.5f;
 
+    [SerializeField] private RunState runState;
+    [SerializeField] private PartyHUDController partyHUD;
+    [SerializeField] private ResourceHUDController resourceHUD;
+    
     private TravelState state = TravelState.Town;
 
     private DiceController diceA;
@@ -64,6 +68,9 @@ public class PlayerTravelController : MonoBehaviour
         if (!townSystem) townSystem = FindFirstObjectByType<TerrainTownRoadSystem>();
         if (!worldMapUI) worldMapUI = FindFirstObjectByType<WorldMapUI>();
         if (!cameraFollow) cameraFollow = FindFirstObjectByType<CameraFollowPlayer>();
+        if (!runState) runState = FindFirstObjectByType<RunState>();
+        if (!partyHUD) partyHUD = FindFirstObjectByType<PartyHUDController>();
+        if (!resourceHUD) resourceHUD = FindFirstObjectByType<ResourceHUDController>();
 
         if (!cameraFocus)
         {
@@ -176,6 +183,8 @@ public class PlayerTravelController : MonoBehaviour
 
             while (!done)
                 yield return null;
+            
+            ResolvePostTravelSupplies();
 
             if (currentSpaceIndex >= activeSpaces.Count - 1)
                 break;
@@ -352,6 +361,12 @@ public class PlayerTravelController : MonoBehaviour
     private void EnterTownMode()
     {
         state = TravelState.Town;
+        
+        if (partyHUD)
+            partyHUD.SetVisible(false);
+        
+        if (resourceHUD)
+            resourceHUD.SetVisible(false);
 
         CleanupDice();
 
@@ -389,6 +404,18 @@ public class PlayerTravelController : MonoBehaviour
     private void EnterTravelMode(bool snap = false)
     {
         if (!player || !cameraFollow) return;
+        
+        if (partyHUD)
+        {
+            partyHUD.SetVisible(true);
+            partyHUD.Refresh();
+        }
+        
+        if (resourceHUD)
+        {
+            resourceHUD.SetVisible(true);
+            resourceHUD.Refresh();
+        }
 
         cameraFocus.SetParent(null);
         cameraFocus.position = player.transform.position;
@@ -458,5 +485,49 @@ public class PlayerTravelController : MonoBehaviour
     {
         yield return SpawnPlayerAtEdgeStart(currentTownId);
         stateRoutine = StartCoroutine(TravelSequence());
+    }
+    
+    private void ResolvePostTravelSupplies()
+    {
+        if (!runState)
+        {
+            Debug.LogError("PlayerTravelController: No RunState assigned/found.");
+            return;
+        }
+
+        int foodBefore = runState.resources.food;
+        int waterBefore = runState.resources.water;
+
+        TravelSupplyResult result = runState.ResolveSuppliesAfterTravelRoll();
+
+        Debug.Log(
+            $"[Supplies] After travel roll | " +
+            $"Food: {foodBefore}->{runState.resources.food} (req {result.requiredFood}, used {result.consumedFood}) | " +
+            $"Water: {waterBefore}->{runState.resources.water} (req {result.requiredWater}, used {result.consumedWater})"
+        );
+
+        if (result.foodShortageTriggered)
+            HandleStarvationTriggered(result);
+
+        if (result.waterShortageTriggered)
+            HandleDehydrationTriggered(result);
+    }
+
+    private void HandleStarvationTriggered(TravelSupplyResult result)
+    {
+        int before = runState.party.currentHealth;
+        int dealt = runState.ApplyStarvationDamage();
+        int after = runState.party.currentHealth;
+
+        Debug.Log($"[Starvation] No food after travel roll. Health: {before} -> {after} (damage: {dealt})");
+    }
+    
+    private void HandleDehydrationTriggered(TravelSupplyResult result)
+    {
+        int before = runState.party.currentHealth;
+        int dealt = runState.ApplyDehydrationDamage();
+        int after = runState.party.currentHealth;
+
+        Debug.Log($"[Dehydration] No water after travel roll. Health: {before} -> {after} (damage: {dealt})");
     }
 }
