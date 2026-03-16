@@ -11,12 +11,14 @@ public class RunState : MonoBehaviour
     [Header("Rules")]
     [Min(0)] public int foodPerMemberPerRoll = 1;
     [Min(0)] public int waterPerMemberPerRoll = 1;
+    [Min(0)] public int goldPerMemberPerRoll = 0;
+
     [Min(0)] public int starvationDamagePerRoll = 10;
     [Min(0)] public int dehydrationDamagePerRoll = 10;
 
     void Awake()
     {
-        party.InitializeHealthIfNeeded();
+        party.InitializeIfNeeded();
     }
 
     public int GetFoodCostForTravelRoll()
@@ -26,7 +28,12 @@ public class RunState : MonoBehaviour
 
     public int GetWaterCostForTravelRoll()
     {
-        return party.GetFoodCostPerRoll(waterPerMemberPerRoll);
+        return party.GetWaterCostPerRoll(waterPerMemberPerRoll);
+    }
+
+    public int GetGoldCostForTravelRoll()
+    {
+        return party.GetGoldCostPerRoll(goldPerMemberPerRoll);
     }
 
     public TravelSupplyResult ResolveSuppliesAfterTravelRoll()
@@ -39,6 +46,10 @@ public class RunState : MonoBehaviour
         int consumedWater = resources.ConsumeWater(requiredWater);
         bool waterShortage = consumedWater < requiredWater;
 
+        int requiredGold = GetGoldCostForTravelRoll();
+        int consumedGold = resources.ConsumeGold(requiredGold);
+        bool goldShortage = consumedGold < requiredGold;
+
         return new TravelSupplyResult
         {
             requiredFood = requiredFood,
@@ -47,18 +58,22 @@ public class RunState : MonoBehaviour
 
             requiredWater = requiredWater,
             consumedWater = consumedWater,
-            waterShortageTriggered = waterShortage
+            waterShortageTriggered = waterShortage,
+
+            requiredGold = requiredGold,
+            consumedGold = consumedGold,
+            goldShortageTriggered = goldShortage
         };
     }
 
-    public int ApplyStarvationDamage()
+    public int ApplyStarvationDamageToAllMembers()
     {
-        return party.ApplyDamage(starvationDamagePerRoll);
+        return party.ApplyDamageToAllMembers(starvationDamagePerRoll);
     }
 
-    public int ApplyDehydrationDamage()
+    public int ApplyDehydrationDamageToAllMembers()
     {
-        return party.ApplyDamage(dehydrationDamagePerRoll);
+        return party.ApplyDamageToAllMembers(dehydrationDamagePerRoll);
     }
 }
 
@@ -71,4 +86,8 @@ public struct TravelSupplyResult
     public int requiredWater;
     public int consumedWater;
     public bool waterShortageTriggered;
+
+    public int requiredGold;
+    public int consumedGold;
+    public bool goldShortageTriggered;
 }

@@ -20,8 +20,8 @@ public class PlayerMotor : MonoBehaviour
     [SerializeField] private float settleDuration = 0.35f;
     
     [Header("Spawn Hop")]
-    [SerializeField] private float spawnHopDuration = 0.45f;
-    [SerializeField] private float spawnHopHeight = 2.0f;
+    [SerializeField] private float spawnHopDuration = 1f;
+    [SerializeField] private float spawnHopHeight = 15f;
     [SerializeField] private float spawnStartScale = 0.08f;
 
     public bool IsPhysicsDriven => rb != null && !rb.isKinematic;
@@ -133,15 +133,34 @@ public class PlayerMotor : MonoBehaviour
         }
     }
 
-    public void BeginHopPath(MonoBehaviour owner, System.Collections.Generic.List<Vector3> spaces, int startIndex, int hopCount, float hopDuration, float hopHeight, System.Action<int> onComplete)
+    public void BeginHopPath(
+        MonoBehaviour owner,
+        System.Collections.Generic.List<Vector3> spaces,
+        int startIndex,
+        int hopCount,
+        float hopDuration,
+        float hopHeight,
+        System.Action<int> onComplete,
+        float startDelay = 0f)
     {
         StopMotion();
-        moveRoutine = owner.StartCoroutine(HopPathRoutine(spaces, startIndex, hopCount, hopDuration, hopHeight, onComplete));
+        moveRoutine = owner.StartCoroutine(
+            HopPathRoutine(spaces, startIndex, hopCount, hopDuration, hopHeight, onComplete, startDelay));
     }
 
-    private IEnumerator HopPathRoutine(System.Collections.Generic.List<Vector3> spaces, int startIndex, int hopCount, float hopDuration, float hopHeight, System.Action<int> onComplete)
+    private IEnumerator HopPathRoutine(
+        System.Collections.Generic.List<Vector3> spaces,
+        int startIndex,
+        int hopCount,
+        float hopDuration,
+        float hopHeight,
+        System.Action<int> onComplete,
+        float startDelay = 0f)
     {
         DisablePhysics();
+        
+        if (startDelay > 0f)
+            yield return new WaitForSeconds(startDelay);
 
         if (spaces == null || spaces.Count < 2)
         {

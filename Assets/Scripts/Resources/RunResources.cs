@@ -24,6 +24,14 @@ public class RunResources
         return consumed;
     }
 
+    public int ConsumeGold(int amount)
+    {
+        amount = Mathf.Max(0, amount);
+        int consumed = Mathf.Min(gold, amount);
+        gold -= consumed;
+        return consumed;
+    }
+
     public void AddFood(int amount) => food += Mathf.Max(0, amount);
     public void AddWater(int amount) => water += Mathf.Max(0, amount);
     public void AddGold(int amount) => gold += Mathf.Max(0, amount);

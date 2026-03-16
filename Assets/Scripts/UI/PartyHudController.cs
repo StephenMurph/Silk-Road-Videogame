@@ -43,7 +43,7 @@ public class PartyHUDController : MonoBehaviour
         if (!runState || runState.party == null)
             return;
 
-        int partyCount = Mathf.Clamp(runState.party.memberCount, 1, 4);
+        int partyCount = Mathf.Clamp(runState.party.MemberCount, 1, 4);
 
         RefreshBackground(partyCount);
         RefreshRows(partyCount);
@@ -70,29 +70,22 @@ public class PartyHUDController : MonoBehaviour
             if (!isUsedRow)
                 continue;
 
-            if (i == 0)
+            if (i < runState.party.members.Count)
             {
+                var member = runState.party.members[i];
+                if (member == null) continue;
+
                 if (rows[i].nameText != null)
-                    rows[i].nameText.text = string.IsNullOrWhiteSpace(runState.party.leaderName)
-                        ? "Stephen"
-                        : runState.party.leaderName;
+                    rows[i].nameText.text = member.memberName;
 
                 if (rows[i].barFill != null)
                 {
-                    float fill = runState.party.maxHealth > 0
-                        ? runState.party.currentHealth / (float)runState.party.maxHealth
+                    float fill = member.maxHealth > 0
+                        ? member.currentHealth / (float)member.maxHealth
                         : 0f;
 
                     rows[i].barFill.fillAmount = Mathf.Clamp01(fill);
                 }
-            }
-            else
-            {
-                if (rows[i].nameText != null)
-                    rows[i].nameText.text = $"Party Member {i + 1}";
-
-                if (rows[i].barFill != null)
-                    rows[i].barFill.fillAmount = 1f;
             }
         }
     }

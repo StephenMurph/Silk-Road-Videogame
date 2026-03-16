@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class PlayerTravelController : MonoBehaviour
 {
@@ -41,6 +42,15 @@ public class PlayerTravelController : MonoBehaviour
     [SerializeField] private RunState runState;
     [SerializeField] private PartyHUDController partyHUD;
     [SerializeField] private ResourceHUDController resourceHUD;
+    [SerializeField] private InventoryUIController inventoryUI;
+    
+    [Header("Companions")]
+    [SerializeField] private GameObject companionPrefab;
+    [SerializeField] private float companionFollowStartDelay = 0.55f;
+    [SerializeField] private float companionSpawnSideOffset = 1.25f;
+    
+    private readonly List<PlayerMotor> companions = new();
+    private readonly List<int> companionSpaceIndices = new();
     
     private TravelState state = TravelState.Town;
 
@@ -71,6 +81,7 @@ public class PlayerTravelController : MonoBehaviour
         if (!runState) runState = FindFirstObjectByType<RunState>();
         if (!partyHUD) partyHUD = FindFirstObjectByType<PartyHUDController>();
         if (!resourceHUD) resourceHUD = FindFirstObjectByType<ResourceHUDController>();
+        if (!inventoryUI) inventoryUI = FindFirstObjectByType<InventoryUIController>();
 
         if (!cameraFocus)
         {
@@ -96,6 +107,17 @@ public class PlayerTravelController : MonoBehaviour
 
         currentTownId = worldMapUI ? Mathf.Clamp(worldMapUI.currentTownId, 0, townSystem.towns.Count - 1) : 0;
         EnterTownMode();
+    }
+    
+    void Update()
+    {
+        if (Keyboard.current == null || runState == null || runState.party == null)
+            return;
+        
+        if (Keyboard.current.digit3Key.wasPressedThisFrame)
+        {
+            DebugAddPartyMember();
+        }
     }
 
     void OnEnable()
@@ -150,9 +172,10 @@ public class PlayerTravelController : MonoBehaviour
         while (currentSpaceIndex < activeSpaces.Count - 1)
         {
             state = TravelState.Dice;
-            
+
             player.EnablePhysics();
-            
+            SetCompanionPhysics(true);
+
             var reset = FindFirstObjectByType<PhysicsResetManager>();
             reset?.Capture();
 
@@ -161,29 +184,91 @@ public class PlayerTravelController : MonoBehaviour
             int total = diceAValue + diceBValue;
 
             CleanupDice();
-            
+
             player.DisablePhysics();
+            SetCompanionPhysics(false);
 
             Vector3 forward = GetForwardFromCurrentSpace();
 
             state = TravelState.Recovering;
             yield return player.RecoverToBoardPose(forward);
-            
-            EnterTravelMode();
+            yield return RecoverCompanionsToBoardPose();
 
-            bool done = false;
+            EnterTravelMode();
 
             state = TravelState.Traveling;
 
-            player.BeginHopPath(this, activeSpaces, currentSpaceIndex, total, hopDuration, hopHeight, i =>
-            {
-                currentSpaceIndex = i;
-                done = true;
-            });
+            int pendingMoves = 1 + companions.Count;
+            int leaderTargetIndex = Mathf.Clamp(currentSpaceIndex + total, 0, activeSpaces.Count - 1);
 
-            while (!done)
+            // Leader
+            player.BeginHopPath(
+                this,
+                activeSpaces,
+                currentSpaceIndex,
+                total,
+                hopDuration,
+                hopHeight,
+                i =>
+                {
+                    currentSpaceIndex = i;
+                    pendingMoves--;
+                },
+                0f);
+
+
+            // Companions
+            for (int c = 0; c < companions.Count; c++)
+            {
+                int capturedIndex = c;
+                if (companions[capturedIndex] == null)
+                {
+                    pendingMoves--;
+                    continue;
+                }
+
+                int oldIndex = companionSpaceIndices[capturedIndex];
+
+                int targetIndex = Mathf.Clamp(
+                    leaderTargetIndex - (capturedIndex + 1),
+                    0,
+                    activeSpaces.Count - 1
+                );
+
+                int hopCount = Mathf.Max(0, targetIndex - oldIndex);
+
+                float startDelay = companionFollowStartDelay * (capturedIndex + 1);
+
+                if (capturedIndex > 0 && oldIndex == companionSpaceIndices[capturedIndex - 1])
+                {
+                    startDelay += hopDuration * 0.6f;
+                }
+
+                if (hopCount == 0)
+                {
+                    companionSpaceIndices[capturedIndex] = oldIndex;
+                    pendingMoves--;
+                    continue;
+                }
+
+                companions[capturedIndex].BeginHopPath(
+                    this,
+                    activeSpaces,
+                    oldIndex,
+                    hopCount,
+                    hopDuration,
+                    hopHeight,
+                    i =>
+                    {
+                        companionSpaceIndices[capturedIndex] = i;
+                        pendingMoves--;
+                    },
+                    startDelay);
+            }
+
+            while (pendingMoves > 0)
                 yield return null;
-            
+
             ResolvePostTravelSupplies();
 
             if (currentSpaceIndex >= activeSpaces.Count - 1)
@@ -294,21 +379,82 @@ public class PlayerTravelController : MonoBehaviour
         startIndex = Mathf.Clamp(startIndex, 0, activeSpaces.Count - 2);
         currentSpaceIndex = startIndex;
 
-        Vector3 spawnPos = activeSpaces[startIndex];
-        Vector3 forward = activeSpaces[startIndex + 1] - spawnPos;
-        
+        Vector3 leaderSpawnPos = activeSpaces[startIndex];
+        Vector3 forward = activeSpaces[startIndex + 1] - leaderSpawnPos;
+
         Vector3 flatForward = forward;
         flatForward.y = 0f;
         if (flatForward.sqrMagnitude > 0.0001f)
         {
             cameraFollow.yaw = Quaternion.LookRotation(-flatForward.normalized, Vector3.up).eulerAngles.y;
         }
-        
+
         EnterTravelMode(false);
 
-        yield return player.SpawnHopFromTown(townPos, spawnPos, forward);
+        EnsureCompanionsMatchParty();
+
+        Vector3 townToLeader = leaderSpawnPos - townPos;
+        townToLeader.y = 0f;
+
+        float leaderDistanceFromTown = townToLeader.magnitude;
+        Vector3 baseDir = leaderDistanceFromTown > 0.001f
+            ? townToLeader.normalized
+            : flatForward.normalized;
+
+        if (baseDir.sqrMagnitude < 0.0001f)
+            baseDir = Vector3.forward;
+
+        int pendingSpawns = 1 + companions.Count;
+
+        // Leader: unchanged
+        StartCoroutine(SpawnMotorFromTown(player, townPos, leaderSpawnPos, forward, () =>
+        {
+            pendingSpawns--;
+        }));
+
+        // Companions: same distance, slightly different direction from the town
+        for (int i = 0; i < companions.Count; i++)
+        {
+            if (companions[i] == null)
+            {
+                pendingSpawns--;
+                continue;
+            }
+
+            // Spread by direction angle, not by sideways landing offset
+            float angleDeg = 0f;
+
+            switch (i)
+            {
+                case 0: angleDeg = -25f; break; // first companion: a bit left
+                case 1: angleDeg =  25f; break; // second companion: a bit right
+                case 2: angleDeg = -50f; break; // third companion: further left
+                default: angleDeg = 10f * (i + 1); break;
+            }
+
+            Vector3 rotatedDir = Quaternion.AngleAxis(angleDeg, Vector3.up) * baseDir;
+            rotatedDir.y = 0f;
+            rotatedDir.Normalize();
+
+            Vector3 companionSpawnPos = townPos + rotatedDir * leaderDistanceFromTown;
+
+            // Give them a sensible facing direction for the spawn hop landing
+            Vector3 companionForward = rotatedDir;
+
+            // Logical trailing indices for later movement system
+            companionSpaceIndices[i] = Mathf.Max(0, startIndex - (i + 1));
+
+            StartCoroutine(SpawnMotorFromTown(companions[i], townPos, companionSpawnPos, companionForward, () =>
+            {
+                pendingSpawns--;
+            }));
+        }
+
+        while (pendingSpawns > 0)
+            yield return null;
 
         player.EnablePhysics();
+        SetCompanionPhysics(true);
     }
 
     private Vector3 GetForwardFromCurrentSpace()
@@ -361,25 +507,24 @@ public class PlayerTravelController : MonoBehaviour
     private void EnterTownMode()
     {
         state = TravelState.Town;
-        
+
         if (partyHUD)
             partyHUD.SetVisible(false);
-        
+
         if (resourceHUD)
             resourceHUD.SetVisible(false);
+
+        if (inventoryUI)
+            inventoryUI.SetTravelUIVisible(false);
 
         CleanupDice();
 
         if (player != null)
             Destroy(player.gameObject);
-        
-        if (worldMapUI != null)
-        {
-            worldMapUI.SetCurrentTown(currentTownId, true, false);
-            worldMapUI.OpenMap();
-        }
 
         player = null;
+        
+        DespawnCompanions();
 
         if (!cameraFocus) return;
 
@@ -391,10 +536,10 @@ public class PlayerTravelController : MonoBehaviour
 
         if (cameraFollow)
             cameraFollow.SetTarget(cameraFocus, true);
-        
+
         if (worldMapUI != null)
         {
-            worldMapUI.SetCurrentTown(currentTownId, true);
+            worldMapUI.SetCurrentTown(currentTownId, true, false);
             worldMapUI.OpenMap();
         }
 
@@ -404,18 +549,21 @@ public class PlayerTravelController : MonoBehaviour
     private void EnterTravelMode(bool snap = false)
     {
         if (!player || !cameraFollow) return;
-        
+
         if (partyHUD)
         {
             partyHUD.SetVisible(true);
             partyHUD.Refresh();
         }
-        
+
         if (resourceHUD)
         {
             resourceHUD.SetVisible(true);
             resourceHUD.Refresh();
         }
+
+        if (inventoryUI)
+            inventoryUI.SetTravelUIVisible(true);
 
         cameraFocus.SetParent(null);
         cameraFocus.position = player.transform.position;
@@ -497,13 +645,15 @@ public class PlayerTravelController : MonoBehaviour
 
         int foodBefore = runState.resources.food;
         int waterBefore = runState.resources.water;
+        int goldBefore = runState.resources.gold;
 
         TravelSupplyResult result = runState.ResolveSuppliesAfterTravelRoll();
 
         Debug.Log(
             $"[Supplies] After travel roll | " +
             $"Food: {foodBefore}->{runState.resources.food} (req {result.requiredFood}, used {result.consumedFood}) | " +
-            $"Water: {waterBefore}->{runState.resources.water} (req {result.requiredWater}, used {result.consumedWater})"
+            $"Water: {waterBefore}->{runState.resources.water} (req {result.requiredWater}, used {result.consumedWater}) | " +
+            $"Gold: {goldBefore}->{runState.resources.gold} (req {result.requiredGold}, used {result.consumedGold})"
         );
 
         if (result.foodShortageTriggered)
@@ -511,23 +661,184 @@ public class PlayerTravelController : MonoBehaviour
 
         if (result.waterShortageTriggered)
             HandleDehydrationTriggered(result);
+
+        if (result.goldShortageTriggered)
+            HandleGoldShortageTriggered(result);
     }
 
     private void HandleStarvationTriggered(TravelSupplyResult result)
     {
-        int before = runState.party.currentHealth;
-        int dealt = runState.ApplyStarvationDamage();
-        int after = runState.party.currentHealth;
+        int beforeDead = runState.party.CountDeadMembers();
+        int totalDamage = runState.ApplyStarvationDamageToAllMembers();
+        int afterDead = runState.party.CountDeadMembers();
 
-        Debug.Log($"[Starvation] No food after travel roll. Health: {before} -> {after} (damage: {dealt})");
+        Debug.Log($"[Starvation] Food shortage after travel roll. Applied {runState.starvationDamagePerRoll} to each party member. Total damage dealt: {totalDamage}. Dead members: {beforeDead}->{afterDead}");
     }
-    
+
     private void HandleDehydrationTriggered(TravelSupplyResult result)
     {
-        int before = runState.party.currentHealth;
-        int dealt = runState.ApplyDehydrationDamage();
-        int after = runState.party.currentHealth;
+        int beforeDead = runState.party.CountDeadMembers();
+        int totalDamage = runState.ApplyDehydrationDamageToAllMembers();
+        int afterDead = runState.party.CountDeadMembers();
 
-        Debug.Log($"[Dehydration] No water after travel roll. Health: {before} -> {after} (damage: {dealt})");
+        Debug.Log($"[Dehydration] Water shortage after travel roll. Applied {runState.dehydrationDamagePerRoll} to each party member. Total damage dealt: {totalDamage}. Dead members: {beforeDead}->{afterDead}");
+    }
+    
+    private void HandleGoldShortageTriggered(TravelSupplyResult result)
+    {
+        Debug.Log($"[Wages] Gold shortage after travel roll. Required {result.requiredGold}, paid {result.consumedGold}. No penalty implemented yet.");
+    }
+    
+    private void DebugAddPartyMember()
+    {
+        if (runState == null || runState.party == null)
+            return;
+
+        int nextNumber = runState.party.MemberCount + 1;
+        bool added = runState.party.TryAddMember($"Companion {nextNumber}");
+
+        if (!added)
+        {
+            Debug.Log("[Party] Could not add member. Party already full.");
+            return;
+        }
+
+        Debug.Log($"[Party] Added Companion {nextNumber}. Party count is now {runState.party.MemberCount}");
+
+        partyHUD?.Refresh();
+        inventoryUI?.Refresh();
+
+        if (state != TravelState.Town && player != null)
+        {
+            EnsureCompanionsMatchParty();
+            SnapCompanionsToFormation();
+        }
+    }
+    
+    private void EnsureCompanionsMatchParty()
+    {
+        int wantedCompanionCount = Mathf.Max(0, runState.party.MemberCount - 1);
+
+        // Spawn missing companions
+        while (companions.Count < wantedCompanionCount)
+        {
+            GameObject prefabToUse = companionPrefab ? companionPrefab : playerPrefab;
+            if (!prefabToUse)
+            {
+                Debug.LogError("PlayerTravelController: No companionPrefab or fallback playerPrefab assigned.");
+                return;
+            }
+
+            GameObject go = Instantiate(prefabToUse);
+            PlayerMotor motor = go.GetComponent<PlayerMotor>();
+            if (!motor)
+                motor = go.AddComponent<PlayerMotor>();
+
+            motor.Initialize(terrain);
+
+            companions.Add(motor);
+            companionSpaceIndices.Add(0);
+
+            var rb = go.GetComponent<Rigidbody>();
+            var reset = FindFirstObjectByType<PhysicsResetManager>();
+            if (rb && reset)
+                reset.Register(rb);
+        }
+
+        // Remove extras
+        while (companions.Count > wantedCompanionCount)
+        {
+            int last = companions.Count - 1;
+
+            if (companions[last] != null)
+                Destroy(companions[last].gameObject);
+
+            companions.RemoveAt(last);
+            companionSpaceIndices.RemoveAt(last);
+        }
+    }
+
+    private void DespawnCompanions()
+    {
+        for (int i = companions.Count - 1; i >= 0; i--)
+        {
+            if (companions[i] != null)
+                Destroy(companions[i].gameObject);
+        }
+
+        companions.Clear();
+        companionSpaceIndices.Clear();
+    }
+
+    private void SnapCompanionsToFormation()
+    {
+        if (companions.Count == 0 || activeSpaces == null || activeSpaces.Count == 0)
+            return;
+
+        for (int i = 0; i < companions.Count; i++)
+        {
+            if (companions[i] == null) continue;
+
+            int desiredIndex = Mathf.Clamp(currentSpaceIndex - (i + 1), 0, activeSpaces.Count - 1);
+            companionSpaceIndices[i] = desiredIndex;
+
+            Vector3 pos = activeSpaces[desiredIndex];
+            Vector3 forward = GetForwardFromSpaceIndex(desiredIndex);
+
+            companions[i].WarpToGrounded(pos, forward);
+            companions[i].EnablePhysics();
+        }
+    }
+
+    private void SetCompanionPhysics(bool enabled)
+    {
+        for (int i = 0; i < companions.Count; i++)
+        {
+            if (companions[i] == null) continue;
+            if (!companions[i].gameObject.activeSelf) continue;
+
+            if (enabled) companions[i].EnablePhysics();
+            else companions[i].DisablePhysics();
+        }
+    }
+
+    private IEnumerator RecoverCompanionsToBoardPose()
+    {
+        for (int i = 0; i < companions.Count; i++)
+        {
+            if (companions[i] == null) continue;
+            if (!companions[i].gameObject.activeSelf) continue;
+
+            Vector3 forward = GetForwardFromSpaceIndex(companionSpaceIndices[i]);
+            yield return companions[i].RecoverToBoardPose(forward);
+        }
+    }
+
+    private Vector3 GetForwardFromSpaceIndex(int index)
+    {
+        if (activeSpaces == null || activeSpaces.Count < 2)
+            return Vector3.forward;
+
+        index = Mathf.Clamp(index, 0, activeSpaces.Count - 1);
+
+        if (index < activeSpaces.Count - 1)
+            return activeSpaces[index + 1] - activeSpaces[index];
+
+        if (index > 0)
+            return activeSpaces[index] - activeSpaces[index - 1];
+
+        return Vector3.forward;
+    }
+    
+    private IEnumerator SpawnMotorFromTown(PlayerMotor motor, Vector3 fromTownPos, Vector3 toSpawnPos, Vector3 desiredForward, Action onComplete)
+    {
+        if (motor == null)
+        {
+            onComplete?.Invoke();
+            yield break;
+        }
+
+        yield return motor.SpawnHopFromTown(fromTownPos, toSpawnPos, desiredForward);
+        onComplete?.Invoke();
     }
 }
