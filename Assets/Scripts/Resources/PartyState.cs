@@ -303,20 +303,14 @@ public class PartyState
         return totalDamageApplied;
     }
 
-    public int HealAllMembers(int amount)
+    public void HealAllMembers(int amount)
     {
-        if (members == null || members.Count == 0)
-            return 0;
-
-        int totalHealed = 0;
-
         for (int i = 0; i < members.Count; i++)
         {
-            if (members[i] == null) continue;
-            totalHealed += members[i].Heal(amount);
-        }
+            if (members[i].IsDead()) continue;
 
-        return totalHealed;
+            members[i].Heal(amount);
+        }
     }
 
     public int CountDeadMembers()

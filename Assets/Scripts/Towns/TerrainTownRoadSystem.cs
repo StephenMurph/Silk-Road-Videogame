@@ -70,12 +70,66 @@ public class TerrainTownRoadSystem : MonoBehaviour
 
     [Tooltip("How many cross-links per town attempt.")]
     [Range(0, 3)] public int crossLinksPerTown = 1;
+    
+    [Header("Town Photos")]
+    public List<TownPhotoEntry> townPhotos = new();
+    
+    [Header("Town Name Pools")]
+    public List<string> grasslandTownNames = new()
+    {
+        "Xi'an",
+        "Kaifeng",
+        "Luoyang",
+        "Chengdu",
+        "Hangzhou",
+        "Suzhou",
+        "Lahore",
+        "Multan",
+        "Varanasi",
+        "Kannauj",
+        "Ahmedabad",
+        "Gwalior"
+    };
 
+    public List<string> desertTownNames = new()
+    {
+        "Samarkand",
+        "Bukhara",
+        "Khiva",
+        "Balkh",
+        "Kashgar",
+        "Turpan",
+        "Dunhuang",
+        "Yazd",
+        "Isfahan",
+        "Shiraz",
+        "Bam",
+        "Delhi",
+        "Lanzhou"
+    };
+    
+    public enum TownBiomeType
+    {
+        Grassland,
+        Desert
+    }
+    
+    [Serializable]
+    public class TownPhotoEntry
+    {
+        public string townName;
+        public Sprite photo;
+    }
+    
     [Serializable]
     public class TownInstance
     {
         public Vector2 nz;
         public GameObject go;
+
+        public string townName;
+        public TownBiomeType biomeType;
+        public Sprite townPhoto;
     }
 
     public readonly List<TownInstance> towns = new();
@@ -200,6 +254,7 @@ public class TerrainTownRoadSystem : MonoBehaviour
         }
 
         var rng = new System.Random(townSeed);
+        HashSet<string> usedTownNames = new HashSet<string>();
         
         Dictionary<int, List<Vector2>> buckets = null;
         float cellSize = townMinSpacingWorld;
@@ -252,10 +307,25 @@ public class TerrainTownRoadSystem : MonoBehaviour
             
             Vector3 world = new Vector3(nx * data.size.x, h01 * data.size.y, nz * data.size.z) + terrain.transform.position;
             var goTown = Instantiate(housePrefab, world, Quaternion.identity, root);
-            
+
             goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
 
-            towns.Add(new TownInstance { nz = new Vector2(nx, nz), go = goTown });
+            TownBiomeType biomeType = GetTownBiomeType(nx, nz);
+            string townName = GetRandomTownName(biomeType, rng, usedTownNames);
+            usedTownNames.Add(townName);
+
+            Sprite townPhoto = GetTownPhoto(townName);
+
+            towns.Add(new TownInstance
+            {
+                nz = new Vector2(nx, nz),
+                go = goTown,
+                townName = townName,
+                biomeType = biomeType,
+                townPhoto = townPhoto
+            });
+
+            Debug.Log($"Spawned town: {townName} ({biomeType}) | Photo assigned: {(townPhoto != null)}");
         }
 
         if (towns.Count < townCount)
@@ -333,5 +403,49 @@ public class TerrainTownRoadSystem : MonoBehaviour
         Vector2 aW = new Vector2(aNZ.x * data.size.x, aNZ.y * data.size.z);
         Vector2 bW = new Vector2(bNZ.x * data.size.x, bNZ.y * data.size.z);
         return Vector2.Distance(aW, bW);
+    }
+    
+    private string GetRandomTownName(TownBiomeType biomeType, System.Random rng, HashSet<string> usedNames)
+    {
+        List<string> source = biomeType == TownBiomeType.Desert
+            ? desertTownNames
+            : grasslandTownNames;
+
+        List<string> available = new List<string>();
+        for (int i = 0; i < source.Count; i++)
+        {
+            if (!usedNames.Contains(source[i]))
+                available.Add(source[i]);
+        }
+
+        if (available.Count == 0)
+        {
+            string fallback = source[rng.Next(source.Count)];
+            return fallback;
+        }
+
+        return available[rng.Next(available.Count)];
+    }
+
+    private TownBiomeType GetTownBiomeType(float nx, float nz)
+    {
+        float desert = terrainManager.SendMessageDesertMask(nx, nz);
+        return desert >= desertCutoff ? TownBiomeType.Desert : TownBiomeType.Grassland;
+    }
+    
+    private Sprite GetTownPhoto(string townName)
+    {
+        if (string.IsNullOrWhiteSpace(townName) || townPhotos == null)
+            return null;
+
+        for (int i = 0; i < townPhotos.Count; i++)
+        {
+            if (townPhotos[i] == null) continue;
+
+            if (string.Equals(townPhotos[i].townName, townName, StringComparison.OrdinalIgnoreCase))
+                return townPhotos[i].photo;
+        }
+
+        return null;
     }
 }

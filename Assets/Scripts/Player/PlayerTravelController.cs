@@ -43,6 +43,7 @@ public class PlayerTravelController : MonoBehaviour
     [SerializeField] private PartyHUDController partyHUD;
     [SerializeField] private ResourceHUDController resourceHUD;
     [SerializeField] private InventoryUIController inventoryUI;
+    [SerializeField] private TownUIController townUI;
     
     [Header("Companions")]
     [SerializeField] private GameObject companionPrefab;
@@ -82,6 +83,7 @@ public class PlayerTravelController : MonoBehaviour
         if (!partyHUD) partyHUD = FindFirstObjectByType<PartyHUDController>();
         if (!resourceHUD) resourceHUD = FindFirstObjectByType<ResourceHUDController>();
         if (!inventoryUI) inventoryUI = FindFirstObjectByType<InventoryUIController>();
+        if (!townUI) townUI = FindFirstObjectByType<TownUIController>();
 
         if (!cameraFocus)
         {
@@ -540,7 +542,11 @@ public class PlayerTravelController : MonoBehaviour
         if (worldMapUI != null)
         {
             worldMapUI.SetCurrentTown(currentTownId, true, false);
-            worldMapUI.OpenMap();
+        }
+
+        if (townUI != null && currentTownId >= 0 && currentTownId < townSystem.towns.Count)
+        {
+            townUI.ShowTown(townSystem.towns[currentTownId]);
         }
 
         Debug.Log($"Entered Town Mode at town {currentTownId}. Map reopened.");
@@ -840,5 +846,17 @@ public class PlayerTravelController : MonoBehaviour
 
         yield return motor.SpawnHopFromTown(fromTownPos, toSpawnPos, desiredForward);
         onComplete?.Invoke();
+    }
+    
+    public void OpenDepartMapFromTown()
+    {
+        if (townUI != null)
+            townUI.HideTown();
+
+        if (worldMapUI != null)
+        {
+            worldMapUI.SetCurrentTown(currentTownId, true, false);
+            worldMapUI.OpenMap();
+        }
     }
 }

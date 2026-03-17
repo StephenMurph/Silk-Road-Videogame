@@ -3,13 +3,21 @@ using UnityEngine;
 
 public class ResourceHUDController : MonoBehaviour
 {
+    [System.Serializable]
+    public class ResourceHUDGroup
+    {
+        public GameObject root;
+        public TMP_Text foodText;
+        public TMP_Text waterText;
+        public TMP_Text goldText;
+    }
+
     [Header("Refs")]
     [SerializeField] private RunState runState;
 
-    [Header("Texts")]
-    [SerializeField] private TMP_Text foodText;
-    [SerializeField] private TMP_Text waterText;
-    [SerializeField] private TMP_Text goldText;
+    [Header("HUD Groups")]
+    [SerializeField] private ResourceHUDGroup travelHUD;
+    [SerializeField] private ResourceHUDGroup restHUD;
 
     void Awake()
     {
@@ -27,18 +35,31 @@ public class ResourceHUDController : MonoBehaviour
         if (!runState || runState.resources == null)
             return;
 
-        if (foodText != null)
-            foodText.text = runState.resources.food.ToString();
+        RefreshGroup(travelHUD);
+        RefreshGroup(restHUD);
+    }
 
-        if (waterText != null)
-            waterText.text = runState.resources.water.ToString();
+    private void RefreshGroup(ResourceHUDGroup group)
+    {
+        if (group.foodText != null)
+            group.foodText.text = runState.resources.food.ToString();
 
-        if (goldText != null)
-            goldText.text = runState.resources.gold.ToString();
+        if (group.waterText != null)
+            group.waterText.text = runState.resources.water.ToString();
+
+        if (group.goldText != null)
+            group.goldText.text = runState.resources.gold.ToString();
     }
 
     public void SetVisible(bool visible)
     {
-        gameObject.SetActive(visible);
+        if (travelHUD.root != null)
+            travelHUD.root.SetActive(visible);
+    }
+
+    public void SetRestVisible(bool visible)
+    {
+        if (restHUD.root != null)
+            restHUD.root.SetActive(visible);
     }
 }
