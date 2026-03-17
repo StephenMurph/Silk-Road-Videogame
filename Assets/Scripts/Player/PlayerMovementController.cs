@@ -45,7 +45,6 @@ public class PlayerMovementController : MonoBehaviour
     private Rigidbody pawnRb;
     private Collider pawnCol;
     
-    // --- Travel Loop State ---
     private Coroutine travelLoopRoutine;
 
     private bool waitingForDice;
@@ -55,8 +54,7 @@ public class PlayerMovementController : MonoBehaviour
 
     public int currentTownId;
     public int nextTownId = -1;
-
-    // current active road spaces for the chosen edge
+    
     private List<Vector3> activeSpaces = new();
     private int currentSpaceIndex = 0;
     private Coroutine hopRoutine;
@@ -184,8 +182,7 @@ public class PlayerMovementController : MonoBehaviour
             
             yield return new WaitForSeconds(0.15f);
         }
-
-        // turn complete → destroy dice
+        
         if (activeDice != null)
         {
             activeDice.OnRolled -= OnDiceRolled;
@@ -335,38 +332,6 @@ public class PlayerMovementController : MonoBehaviour
         return -1;
     }
 
-    /*// 
-    public void SpawnOrMovePawnInFrontOfTown(int fromTownId, int toTownId)
-    {
-        if (!terrain || !townSystem) return;
-
-        if (pawnInstance == null)
-        {
-            if (!pawnPrefab)
-            {
-                Debug.LogError("PlayerMovementController: Assign pawnPrefab.");
-                return;
-            }
-
-            var go = Instantiate(pawnPrefab);
-            pawnInstance = go.transform;
-
-            pawnRb = pawnInstance.GetComponent<Rigidbody>();
-            pawnCol = pawnInstance.GetComponent<Collider>();
-
-            var reset = FindFirstObjectByType<PhysicsResetManager>();
-            if (reset && pawnRb)
-                reset.Register(pawnRb);
-        }
-
-        if (TryFindRoadSpawn(fromTownId, toTownId, out var spawnPos, out var forwardDir))
-        {
-            pawnInstance.position = spawnPos;
-            PlacePawnOnTerrainPhysics(spawnPos);
-            FaceDirectionFlat(forwardDir);
-        }
-    }*/
-
     private bool TryFindRoadSpawn(int fromTownId, int toTownId, out Vector3 spawnWorld, out Vector3 forwardDir)
     {
         spawnWorld = default;
@@ -402,8 +367,7 @@ public class PlayerMovementController : MonoBehaviour
                 return true;
             }
         }
-
-        // fallback
+        
         Vector3 fb = fromWorld + dir * minDistanceFromTownWorld;
         float fy = terrain.SampleHeight(fb) + terrain.transform.position.y + pawnYOffset;
         spawnWorld = new Vector3(fb.x, fy, fb.z);
@@ -472,8 +436,7 @@ public class PlayerMovementController : MonoBehaviour
         else
             pawnInstance.rotation = rot;
     }
-
-    // --- Gizmos to see the hop spaces ---
+    
     void OnDrawGizmosSelected()
     {
         if (!drawSpaces || activeSpaces == null || activeSpaces.Count == 0) return;
@@ -485,8 +448,7 @@ public class PlayerMovementController : MonoBehaviour
             if (i > 0)
                 Gizmos.DrawLine(activeSpaces[i - 1], activeSpaces[i]);
         }
-
-        // Current index marker
+        
         Gizmos.color = Color.yellow;
         Gizmos.DrawSphere(activeSpaces[Mathf.Clamp(currentSpaceIndex, 0, activeSpaces.Count - 1)], gizmoSphereRadius * 1.25f);
     }
@@ -516,7 +478,6 @@ public class PlayerMovementController : MonoBehaviour
     
     public void EnterTownMode()
     {
-        // pawn should not exist in town mode 
         DespawnPawnIfExists();
 
         if (!cameraFocus || !townSystem) return;
@@ -524,8 +485,7 @@ public class PlayerMovementController : MonoBehaviour
 
         var townGO = townSystem.towns[currentTownId].go;
         if (!townGO) return;
-
-        // unparent and snap focus to town
+        
         cameraFocus.SetParent(null);
         cameraFocus.position = townGO.transform.position;
 
@@ -538,8 +498,7 @@ public class PlayerMovementController : MonoBehaviour
     public void EnterTravelMode()
     {
         if (!pawnInstance || !cameraFocus) return;
-
-        // parent focus to pawn so it follows perfectly
+        
         cameraFocus.SetParent(pawnInstance);
         cameraFocus.localPosition = Vector3.zero;
 
@@ -581,8 +540,7 @@ public class PlayerMovementController : MonoBehaviour
             Debug.LogWarning("SpawnOrMovePawnOnEdgeStart: activeSpaces missing.");
             return;
         }
-
-        // Ensure pawn exists
+        
         if (pawnInstance == null)
         {
             if (!pawnPrefab)

@@ -53,8 +53,6 @@ public class PhysicsResetManager : MonoBehaviour
         hasSnapshot = true;
         Debug.Log($"[PhysicsResetManager] Captured {snap.Count} rigidbodies.");
     }
-
-    // --- Instant snap restore
     public void RestoreInstant()
     {
         if (!hasSnapshot)
@@ -98,8 +96,7 @@ public class PhysicsResetManager : MonoBehaviour
 
         Debug.Log($"[PhysicsResetManager] Restored INSTANT {snap.Count} rigidbodies.");
     }
-
-    // --- Animated board-game restore
+    
     public void RestoreAnimated(float duration = 0.25f, AnimationCurve ease = null)
     {
         if (!hasSnapshot)
@@ -118,8 +115,7 @@ public class PhysicsResetManager : MonoBehaviour
     {
         duration = Mathf.Max(0.01f, duration);
         if (ease == null) ease = AnimationCurve.EaseInOut(0, 0, 1, 1);
-
-        // Cache start state + force kinematic during the animation
+        
         var starts = new Dictionary<Rigidbody, (Vector3 pos, Quaternion rot)>(snap.Count);
 
         foreach (var kv in snap)
@@ -131,8 +127,7 @@ public class PhysicsResetManager : MonoBehaviour
             rb.angularVelocity = Vector3.zero;
 
             starts[rb] = (rb.transform.position, rb.transform.rotation);
-
-            // freeze physics while we animate back
+            
             rb.isKinematic = true;
         }
 
@@ -157,8 +152,7 @@ public class PhysicsResetManager : MonoBehaviour
 
             yield return null;
         }
-
-        // Finalize + restore original flags
+        
         foreach (var kv in snap)
         {
             var rb = kv.Key;

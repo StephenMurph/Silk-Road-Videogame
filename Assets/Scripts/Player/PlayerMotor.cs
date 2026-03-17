@@ -176,10 +176,7 @@ public class PlayerMotor : MonoBehaviour
         {
             Vector3 start = transform.position;
             Vector3 endSpace = spaces[nextIndex];
-
-            // Look-ahead target:
-            // while moving to N, rotate toward N+1 if it exists,
-            // otherwise just face the current destination.
+            
             Vector3 lookTarget =
                 nextIndex < spaces.Count - 1
                 ? spaces[nextIndex + 1]
@@ -203,8 +200,7 @@ public class PlayerMotor : MonoBehaviour
                 Vector3 groundPos = GetGroundedPosition(new Vector3(xz.x, 0f, xz.z));
                 float arc = Mathf.Sin(u * Mathf.PI) * hopHeight;
                 Vector3 finalPos = groundPos + Vector3.up * arc;
-
-                // Rotate gradually during the hop toward the look-ahead target
+                
                 Vector3 desiredDir = lookTarget - finalPos;
                 Quaternion targetRot = GetTargetRotation(finalPos, desiredDir, false);
 
@@ -223,8 +219,7 @@ public class PlayerMotor : MonoBehaviour
 
                 yield return null;
             }
-
-            // Land without a snap-rotation
+            
             Vector3 landed = GetGroundedPosition(endSpace);
 
             if (rb)

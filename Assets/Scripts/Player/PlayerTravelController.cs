@@ -202,8 +202,7 @@ public class PlayerTravelController : MonoBehaviour
 
             int pendingMoves = 1 + companions.Count;
             int leaderTargetIndex = Mathf.Clamp(currentSpaceIndex + total, 0, activeSpaces.Count - 1);
-
-            // Leader
+            
             player.BeginHopPath(
                 this,
                 activeSpaces,
@@ -218,8 +217,7 @@ public class PlayerTravelController : MonoBehaviour
                 },
                 0f);
 
-
-            // Companions
+            
             for (int c = 0; c < companions.Count; c++)
             {
                 int capturedIndex = c;
@@ -407,14 +405,12 @@ public class PlayerTravelController : MonoBehaviour
             baseDir = Vector3.forward;
 
         int pendingSpawns = 1 + companions.Count;
-
-        // Leader: unchanged
+        
         StartCoroutine(SpawnMotorFromTown(player, townPos, leaderSpawnPos, forward, () =>
         {
             pendingSpawns--;
         }));
-
-        // Companions: same distance, slightly different direction from the town
+        
         for (int i = 0; i < companions.Count; i++)
         {
             if (companions[i] == null)
@@ -422,15 +418,14 @@ public class PlayerTravelController : MonoBehaviour
                 pendingSpawns--;
                 continue;
             }
-
-            // Spread by direction angle, not by sideways landing offset
+            
             float angleDeg = 0f;
 
             switch (i)
             {
-                case 0: angleDeg = -25f; break; // first companion: a bit left
-                case 1: angleDeg =  25f; break; // second companion: a bit right
-                case 2: angleDeg = -50f; break; // third companion: further left
+                case 0: angleDeg = -25f; break; 
+                case 1: angleDeg =  25f; break; 
+                case 2: angleDeg = -50f; break;
                 default: angleDeg = 10f * (i + 1); break;
             }
 
@@ -439,11 +434,9 @@ public class PlayerTravelController : MonoBehaviour
             rotatedDir.Normalize();
 
             Vector3 companionSpawnPos = townPos + rotatedDir * leaderDistanceFromTown;
-
-            // Give them a sensible facing direction for the spawn hop landing
+            
             Vector3 companionForward = rotatedDir;
-
-            // Logical trailing indices for later movement system
+            
             companionSpaceIndices[i] = Mathf.Max(0, startIndex - (i + 1));
 
             StartCoroutine(SpawnMotorFromTown(companions[i], townPos, companionSpawnPos, companionForward, () =>
@@ -724,8 +717,7 @@ public class PlayerTravelController : MonoBehaviour
     private void EnsureCompanionsMatchParty()
     {
         int wantedCompanionCount = Mathf.Max(0, runState.party.MemberCount - 1);
-
-        // Spawn missing companions
+        
         while (companions.Count < wantedCompanionCount)
         {
             GameObject prefabToUse = companionPrefab ? companionPrefab : playerPrefab;
@@ -750,8 +742,7 @@ public class PlayerTravelController : MonoBehaviour
             if (rb && reset)
                 reset.Register(rb);
         }
-
-        // Remove extras
+        
         while (companions.Count > wantedCompanionCount)
         {
             int last = companions.Count - 1;

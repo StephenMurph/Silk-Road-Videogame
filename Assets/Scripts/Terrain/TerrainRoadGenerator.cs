@@ -422,8 +422,7 @@ public static class TerrainRoadGenerator
                 ClearRoadMask();
                 roadCenterlineNZ.Clear();
             }
-
-            // We want to paint multiple paths into the same alphamap buffer.
+            
             int aw = data.alphamapWidth;
             int ah = data.alphamapHeight;
             var maps = data.GetAlphamaps(0, 0, aw, ah);
@@ -490,8 +489,7 @@ public static class TerrainRoadGenerator
             if (townsNZ == null || townsNZ.Count < 2) return edges;
 
             var rng = new System.Random(seed);
-
-            // ---- 1) pick farthest pair as endpoints ----
+            
             int ia = 0, ib = 1;
             float best = -1f;
             for (int i = 0; i < townsNZ.Count; i++)
@@ -507,8 +505,7 @@ public static class TerrainRoadGenerator
             float len = dir.magnitude;
             if (len < 1e-5f) dir = Vector2.right;
             else dir /= len;
-
-            // ---- 2) sort towns by projection onto the main axis ----
+            
             var sorted = new List<Vector2>(townsNZ);
             sorted.Sort((p, q) =>
             {
@@ -516,19 +513,16 @@ public static class TerrainRoadGenerator
                 float tq = Vector2.Dot(q - A, dir);
                 return tp.CompareTo(tq);
             });
-
-            // ---- 3) main chain edges (backbone) ----
+            
             for (int i = 0; i < sorted.Count - 1; i++)
                 edges.Add(new RoadEdgeNZ(sorted[i], sorted[i + 1]));
             
             for (int i = 0; i < townsNZ.Count; i++)
             {
                 if (rng.NextDouble() > extraConnectionChance) continue;
-
-                // connect to a nearby random neighbor
+                
                 Vector2 t = townsNZ[i];
-
-                // find a few nearest candidates
+                
                 var candidates = new List<(float d2, Vector2 p)>();
                 for (int j = 0; j < townsNZ.Count; j++)
                 {
@@ -541,7 +535,6 @@ public static class TerrainRoadGenerator
                 int kmax = Mathf.Min(extraConnectionsPerTown, candidates.Count);
                 for (int k = 0; k < kmax; k++)
                 {
-                    // bias toward nearer ones
                     int pick = rng.Next(0, Mathf.Min(6, candidates.Count));
                     edges.Add(new RoadEdgeNZ(t, candidates[pick].p));
                 }
@@ -624,7 +617,7 @@ public static class TerrainRoadGenerator
 )
 {
     float edge = edgeMask01 != null ? Mathf.Clamp01(edgeMask01(nx, nz)) : 0f;
-    if (edge >= edgeBlockCutoff) return; // don't paint on beach
+    if (edge >= edgeBlockCutoff) return; 
     
     nx = Mathf.Clamp01(nx);
     nz = Mathf.Clamp01(nz);
@@ -764,7 +757,6 @@ public static class TerrainRoadGenerator
         if (roadMask01 == null) return 0f;
 
         float max = 0f;
-        // sample a grid so we don't scan every pixel
         int sx = Mathf.Max(1, roadMask01.width / 64);
         int sy = Mathf.Max(1, roadMask01.height / 64);
 

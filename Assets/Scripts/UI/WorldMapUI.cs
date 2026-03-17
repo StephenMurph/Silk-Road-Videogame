@@ -11,13 +11,13 @@ public class WorldMapUI : MonoBehaviour
     public TerrainTownRoadSystem townSystem;
 
     [Header("Map")]
-    public RawImage mapImage;          // assign your INNER map RawImage here
-    public RectTransform mapRect;      // assign the same INNER RawImage rect here
+    public RawImage mapImage;          
+    public RectTransform mapRect;      
     public int mapResolution = 512;
 
     [Header("Towns")]
     public TownDotUI townDotPrefab;
-    public RectTransform townDotRoot;  // make this a child of MapRawImage
+    public RectTransform townDotRoot;
 
     [Header("Selection")]
     public bool startAtRandomTown = true;

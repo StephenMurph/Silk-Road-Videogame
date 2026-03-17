@@ -7,12 +7,12 @@ public class TerrainManager : MonoBehaviour
     [SerializeField] private Terrain terrain;
     
     [Header("Road Layers")]
-    public TerrainLayer dirtRoadLayer;   // used in grasslands
-    public TerrainLayer desertTrailLayer; // used in deserts (more subtle)
+    public TerrainLayer dirtRoadLayer;   
+    public TerrainLayer desertTrailLayer; 
     
     [Header("Heightmap Settings")]
-    [Min(33)] public int heightmapResolution = 513; // 2^n + 1
-    [Min(1f)] public float terrainHeight = 80f;     // world units
+    [Min(33)] public int heightmapResolution = 513; 
+    [Min(1f)] public float terrainHeight = 80f;     
     
     [Header("Biome Height Ranges (Normalized 0..1)")]
     [Range(0f, 1f)] public float grassMin01 = 0.00f;
@@ -25,23 +25,23 @@ public class TerrainManager : MonoBehaviour
     [Range(0f, 1f)] public float mountainMax01 = 1.00f;
 
     [Header("Noise (Layered Perlin / fBm)")]
-    [Min(1f)] public float scale = 200f;            // bigger = smoother
+    [Min(1f)] public float scale = 200f;            
     [Min(1)] public int octaves = 5;
-    [Range(0f, 1f)] public float persistence = 0.5f; // amplitude drop per octave
-    [Min(1f)] public float lacunarity = 2f;          // frequency rise per octave
+    [Range(0f, 1f)] public float persistence = 0.5f;
+    [Min(1f)] public float lacunarity = 2f;
     public int seed = 12345;
     public Vector2 offset;
 
     [Header("Shaping")]
-    public bool ridged = false; // makes sharper mountain-like ridges
+    public bool ridged = false; 
     public AnimationCurve heightCurve = AnimationCurve.Linear(0, 0, 1, 1);
     
     [Header("Desert Shape (Dunes)")]
-    [Min(1f)] public float desertScale = 90f;          // smaller => more frequent dunes
+    [Min(1f)] public float desertScale = 90f;          
     [Min(1)] public int desertOctaves = 3;
     [Range(0f, 1f)] public float desertPersistence = 0.45f;
     [Min(1f)] public float desertLacunarity = 2.4f;
-    [Range(0f, 1f)] public float desertDuneStrength = 0.65f; // how “dune-y” the desert gets
+    [Range(0f, 1f)] public float desertDuneStrength = 0.65f; 
     public AnimationCurve desertHeightCurve = AnimationCurve.Linear(0, 0, 1, 1);
     
     [Header("Mountain Biome")]
@@ -63,8 +63,8 @@ public class TerrainManager : MonoBehaviour
     public int treeInstanceCount = 2000; 
 
     [Range(0f, 90f)] public float treeMaxSlope = 25f;
-    [Range(0f, 1f)] public float treeMinHeight01 = 0.05f; // avoid underwater/very low
-    [Range(0f, 1f)] public float treeMaxHeight01 = 0.85f; // avoid peaks
+    [Range(0f, 1f)] public float treeMinHeight01 = 0.05f; 
+    [Range(0f, 1f)] public float treeMaxHeight01 = 0.85f; 
     [Min(0f)] public float treeMinSpacingWorld = 6f;
     public Vector2 treeScaleRange = new Vector2(0.8f, 1.4f);
 
@@ -86,18 +86,18 @@ public class TerrainManager : MonoBehaviour
     [Min(5f)] public float lakeRadiusWorld = 35f;
     [Range(0f, 0.5f)] public float lakeMaxDepth01 = 0.06f;
 
-    [Range(0f, 0.5f)] public float lakeEdgeMargin01 = 0.12f; // keep away from map edge
+    [Range(0f, 0.5f)] public float lakeEdgeMargin01 = 0.12f; 
     [Range(0f, 0.5f)] public float lakeShoreClearance01 = 0.02f;
-    [Range(0f, 0.5f)] public float lakeMinAboveSea01 = 0.03f;     // lake water must be at least this above sea
+    [Range(0f, 0.5f)] public float lakeMinAboveSea01 = 0.03f;     
     [Range(0f, 0.5f)] public float lakeMaxDropFromLocal01 = 0.12f;
     
     [Header("Lake Shape")]
-    [Range(0.5f, 2f)] public float lakeOvalAspect = 1.35f; // >1 = oval (stretched)
-    [Range(0f, 180f)] public float lakeRotationDeg = 0f;   // 0 = random each regen if you want
+    [Range(0.5f, 2f)] public float lakeOvalAspect = 1.35f; 
+    [Range(0f, 180f)] public float lakeRotationDeg = 0f;   
     public bool randomizeLakeRotation = true;
 
-    [Range(0f, 0.6f)] public float lakeShoreWobble01 = 0.18f; // 0 = perfect ellipse
-    [Min(0.1f)] public float lakeWobbleScale = 2.5f;          // bigger = smoother bumps
+    [Range(0f, 0.6f)] public float lakeShoreWobble01 = 0.18f; 
+    [Min(0.1f)] public float lakeWobbleScale = 2.5f;
 
     [Header("Lake Water Object")]
     public Material waterMaterial; 
@@ -135,9 +135,9 @@ public class TerrainManager : MonoBehaviour
     [Header("Ocean Edge / Beaches")]
     public bool edgeDropoff = true;
 
-    [Range(0f, 0.5f)] public float edgeWidth01 = 0.08f;     // thickness of beach+drop zone
+    [Range(0f, 0.5f)] public float edgeWidth01 = 0.08f;     
     [Range(0f, 1f)] public float seaLevel01 = 0.08f;         
-    [Range(0f, 0.2f)] public float edgeBelowSea01 = 0.03f;   // how far below sea the edge sinks
+    [Range(0f, 0.2f)] public float edgeBelowSea01 = 0.03f;   
     public AnimationCurve edgeFalloffCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
 
     [Range(0f, 1f)] public float edgeBeachStrength = 1f;
@@ -173,8 +173,7 @@ public class TerrainManager : MonoBehaviour
 
 
         data.SetHeights(0, 0, heights);
-
-// 2) Reset lake state each regen
+        
         hasLake = false;
 
         if (generateLake)
@@ -193,19 +192,17 @@ public class TerrainManager : MonoBehaviour
 
                 float localH01 = Mathf.Clamp01(data.GetInterpolatedHeight(lakeCenterNZ.x, lakeCenterNZ.y) / data.size.y);
 
-                float desired = localH01 - lakeShoreClearance01;        // water slightly below ground
-                float minAllowed = seaLevel01 + lakeMinAboveSea01;      // must be above ocean
-                float maxAllowed = localH01 - lakeMaxDropFromLocal01;   // cap crater depth
+                float desired = localH01 - lakeShoreClearance01;        
+                float minAllowed = seaLevel01 + lakeMinAboveSea01;      
+                float maxAllowed = localH01 - lakeMaxDropFromLocal01;   
 
                 lakeWaterLevel01Actual = Mathf.Clamp(desired, minAllowed, maxAllowed);
-
-                // Carve lake basin into the SAME heights array, then re-apply
+                
                 CarveLakeBasin(data, heights, lakeCenterNZ, lakeWaterLevel01Actual, lakeRadiusWorld, lakeMaxDepth01);
                 data.SetHeights(0, 0, heights);
 
                 hasLake = true;
-
-                // Create visible lake water surface
+                
                 CreateOrUpdateLakeWater(data, lakeCenterNZ, lakeWaterLevel01Actual, lakeRadiusWorld);
             }
             else
@@ -674,8 +671,8 @@ private BiomeWeights BiomeWeightsFromRegions(float nx, float nz)
             maps[y, x, 0] = grass;
             maps[y, x, 1] = desert;
             maps[y, x, 2] = mountain;
-            maps[y, x, 3] = 0f; // road
-            maps[y, x, 4] = 0f; // trail
+            maps[y, x, 3] = 0f; 
+            maps[y, x, 4] = 0f; 
         }
 
         data.SetAlphamaps(0, 0, maps);
@@ -813,13 +810,12 @@ private void CarveLakeBasin(
 
         go.transform.position = new Vector3(worldX, worldY, worldZ);
 
-        float a = lakeRadiusWorld * lakeOvalAspect;     // major radius
-        float b = lakeRadiusWorld / lakeOvalAspect;     // minor radius
+        float a = lakeRadiusWorld * lakeOvalAspect;     
+        float b = lakeRadiusWorld / lakeOvalAspect;     
 
         go.transform.localScale = new Vector3(a * 2f, 0.05f, b * 2f);
         go.transform.rotation = Quaternion.Euler(0f, lakeRotationRad * Mathf.Rad2Deg, 0f);
-
-        // no collider
+        
         var col = go.GetComponent<Collider>();
         if (col) col.enabled = false;
     }
@@ -844,7 +840,7 @@ private void CarveLakeBasin(
             if (mountain >= desert && mountain >= grass)
                 c = Color.gray;
             else if (desert >= grass)
-                c = new Color(1f, 0.85f, 0.2f); // yellow
+                c = new Color(1f, 0.85f, 0.2f);
             else
                 c = Color.green;
 
