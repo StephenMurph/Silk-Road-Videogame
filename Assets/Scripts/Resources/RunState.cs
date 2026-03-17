@@ -23,17 +23,68 @@ public class RunState : MonoBehaviour
 
     public int GetFoodCostForTravelRoll()
     {
-        return party.GetFoodCostPerRoll(foodPerMemberPerRoll);
+        if (party == null || party.members == null || party.members.Count == 0)
+            return 0;
+
+        int total = 0;
+
+        for (int i = 0; i < party.members.Count; i++)
+        {
+            var member = party.members[i];
+            if (member == null) continue;
+            if (member.IsDead()) continue;
+
+            if (i == 0)
+                total += Mathf.Max(0, foodPerMemberPerRoll);
+            else
+                total += Mathf.Max(0, member.foodCostPerTurn);
+        }
+
+        return total;
     }
 
     public int GetWaterCostForTravelRoll()
     {
-        return party.GetWaterCostPerRoll(waterPerMemberPerRoll);
+        if (party == null || party.members == null || party.members.Count == 0)
+            return 0;
+
+        int total = 0;
+
+        for (int i = 0; i < party.members.Count; i++)
+        {
+            var member = party.members[i];
+            if (member == null) continue;
+            if (member.IsDead()) continue;
+
+            if (i == 0)
+                total += Mathf.Max(0, waterPerMemberPerRoll);
+            else
+                total += Mathf.Max(0, member.waterCostPerTurn);
+        }
+
+        return total;
     }
 
     public int GetGoldCostForTravelRoll()
     {
-        return party.GetGoldCostPerRoll(goldPerMemberPerRoll);
+        if (party == null || party.members == null || party.members.Count == 0)
+            return 0;
+
+        int total = 0;
+
+        for (int i = 0; i < party.members.Count; i++)
+        {
+            var member = party.members[i];
+            if (member == null) continue;
+            if (member.IsDead()) continue;
+
+            if (i == 0)
+                total += Mathf.Max(0, goldPerMemberPerRoll);
+            else
+                total += Mathf.Max(0, member.goldCostPerTurn);
+        }
+
+        return total;
     }
 
     public TravelSupplyResult ResolveSuppliesAfterTravelRoll()

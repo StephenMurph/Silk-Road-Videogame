@@ -108,6 +108,21 @@ public class TerrainTownRoadSystem : MonoBehaviour
         "Lanzhou"
     };
     
+    public List<string> chineseRecruitNames = new()
+    {
+        "Wei", "Jun", "Liang", "Shen", "Bao", "Ming", "Tao", "Rui", "Qiao", "Fen", "Lian", "Mei"
+    };
+
+    public List<string> middleEasternRecruitNames = new()
+    {
+        "Hasan", "Yusuf", "Karim", "Farid", "Rashid", "Hamza", "Tariq", "Layla", "Zaynab", "Maryam", "Safiya", "Nadia"
+    };
+
+    public List<string> indianRecruitNames = new()
+    {
+        "Arjun", "Dev", "Ravi", "Kiran", "Vikram", "Anand", "Priya", "Asha", "Meera", "Kavita", "Leela", "Sita"
+    };
+    
     public enum TownBiomeType
     {
         Grassland,
@@ -130,6 +145,36 @@ public class TerrainTownRoadSystem : MonoBehaviour
         public string townName;
         public TownBiomeType biomeType;
         public Sprite townPhoto;
+        
+        public TownMarketData marketData;
+        
+        public RecruitCandidateData[] recruitCandidates = new RecruitCandidateData[3];
+    }
+    
+    [System.Serializable]
+    public class ShopItemData
+    {
+        public TradeGoodType type;
+        public int price;
+    }
+    
+    [Serializable]
+    public class SellPriceData
+    {
+        public TradeGoodType type;
+        public int price;
+    }
+
+    [System.Serializable]
+    public class TownMarketData
+    {
+        public int marketCycleId;
+
+        public int foodPrice;
+        public int waterPrice;
+        
+        public ShopItemData[] goods = new ShopItemData[4];
+        public SellPriceData[] sellPrices;
     }
 
     public readonly List<TownInstance> towns = new();
@@ -172,14 +217,12 @@ public class TerrainTownRoadSystem : MonoBehaviour
     var branchEdges = allEdges.GetRange(mainCount, allEdges.Count - mainCount);
     
     float edgeBlockCutoff = 0.05f;
-
-    // --- Masks ---
+    
     Func<float, float, float> desertMask = (nx, nz) => terrainManager.SendMessageDesertMask(nx, nz);
     Func<float, float, float> mountainMask = (nx, nz) => terrainManager.SendMessageMountainMask(nx, nz);
     Func<float, float, float> edgeMask = (nx, nz) => terrainManager.SendMessageEdgeMask(nx, nz);
 
-
-    // --- PASS 1: paint main road backbone (clears road mask) ---
+    
     TerrainRoadGenerator.GenerateRoadNetwork(
         terrain: terrain,
         desertMask01: desertMask,
@@ -201,8 +244,7 @@ public class TerrainTownRoadSystem : MonoBehaviour
         clearRoadMaskFirst: true,
         roadAttraction: 0f
     );
-
-    // --- PASS 2: paint branches that prefer existing main road ---
+    
     if (branchEdges.Count > 0 && branchRoadAttraction > 0f)
     {
         TerrainRoadGenerator.GenerateRoadNetwork(
@@ -227,10 +269,11 @@ public class TerrainTownRoadSystem : MonoBehaviour
             roadAttraction: branchRoadAttraction
         );
     }
-
-    // Update edgesNZ + adjacency to match the new network
+    
     edgesNZ = allEdges;
     BuildAdjacencyFromEdges();
+    
+    RefreshAllTownMarkets(0);
 
     Debug.Log($"TownRoadSystem: towns={towns.Count}, mainEdges={mainEdges.Count}, branchEdges={branchEdges.Count}, totalEdges={edgesNZ.Count}");
 }
@@ -238,8 +281,7 @@ public class TerrainTownRoadSystem : MonoBehaviour
     void SpawnTowns(TerrainData data)
     {
         towns.Clear();
-
-        // Clear old
+        
         Transform root = transform.Find(townRootName);
         if (!root)
         {
@@ -315,6 +357,7 @@ public class TerrainTownRoadSystem : MonoBehaviour
             usedTownNames.Add(townName);
 
             Sprite townPhoto = GetTownPhoto(townName);
+            RecruitCandidateData[] recruitCandidates = GenerateRecruitCandidates(biomeType, rng);
 
             towns.Add(new TownInstance
             {
@@ -322,10 +365,11 @@ public class TerrainTownRoadSystem : MonoBehaviour
                 go = goTown,
                 townName = townName,
                 biomeType = biomeType,
-                townPhoto = townPhoto
+                townPhoto = townPhoto,
+                recruitCandidates = recruitCandidates
             });
 
-            Debug.Log($"Spawned town: {townName} ({biomeType}) | Photo assigned: {(townPhoto != null)}");
+            Debug.Log($"Spawned town: {townName} ({biomeType}) | Photo assigned: {(townPhoto != null)} | Recruits: {recruitCandidates.Length}");
         }
 
         if (towns.Count < townCount)
@@ -447,5 +491,273 @@ public class TerrainTownRoadSystem : MonoBehaviour
         }
 
         return null;
+    }
+    
+    private string GetRandomRecruitName(TownBiomeType biomeType, System.Random rng)
+    {
+        List<string> pool = new List<string>();
+
+        if (biomeType == TownBiomeType.Grassland)
+        {
+            pool.AddRange(chineseRecruitNames);
+            pool.AddRange(indianRecruitNames);
+        }
+        else
+        {
+            pool.AddRange(middleEasternRecruitNames);
+            pool.AddRange(indianRecruitNames);
+            pool.AddRange(chineseRecruitNames);
+        }
+
+        return pool[rng.Next(pool.Count)];
+    }
+
+    private RecruitCandidateData[] GenerateRecruitCandidates(TownBiomeType biomeType, System.Random rng)
+    {
+        RecruitCandidateData[] result = new RecruitCandidateData[3];
+
+        for (int i = 0; i < result.Length; i++)
+        {
+            result[i] = new RecruitCandidateData
+            {
+                candidateName = GetRandomRecruitName(biomeType, rng),
+                goldCostPerTurn = rng.Next(1, 6),
+                foodCostPerTurn = rng.Next(1, 6),
+                waterCostPerTurn = rng.Next(1, 6)
+            };
+        }
+
+        return result;
+    }
+    
+    public void RefreshAllTownMarkets(int marketCycleId)
+    {
+        var rng = new System.Random(townSeed + marketCycleId * 999);
+
+        for (int i = 0; i < towns.Count; i++)
+        {
+            GenerateMarketForTown(towns[i], rng, marketCycleId);
+        }
+    }
+    
+    public void RefreshAllTownMarketsExcept(int marketCycleId, int excludedTownIndex)
+    {
+        var rng = new System.Random(townSeed + marketCycleId * 999);
+
+        for (int i = 0; i < towns.Count; i++)
+        {
+            if (i == excludedTownIndex)
+                continue;
+
+            GenerateMarketForTown(towns[i], rng, marketCycleId);
+        }
+    }
+    
+    private void GenerateMarketForTown(TownInstance town, System.Random rng, int cycleId)
+    {
+        if (town == null)
+            return;
+
+        var data = new TownMarketData();
+        data.marketCycleId = cycleId;
+
+        data.foodPrice = rng.Next(1, 4);
+        data.waterPrice = rng.Next(1, 4);
+
+        TradeGoodType[] allGoods = (TradeGoodType[])Enum.GetValues(typeof(TradeGoodType));
+        var weightedPool = new List<TradeGoodType>();
+
+        for (int i = 0; i < allGoods.Length; i++)
+        {
+            var g = allGoods[i];
+            if (g == TradeGoodType.None) continue;
+
+            bool isGrassland = IsGrasslandGood(g);
+            bool isDesert = IsDesertGood(g);
+
+            int weight = 1;
+
+            if (town.biomeType == TownBiomeType.Grassland)
+            {
+                if (isGrassland) weight = 18;
+                else if (isDesert) weight = 1;
+            }
+            else
+            {
+                if (isDesert) weight = 18;
+                else if (isGrassland) weight = 1;
+            }
+
+            for (int w = 0; w < weight; w++)
+                weightedPool.Add(g);
+        }
+
+        data.goods = new ShopItemData[4];
+
+        var chosenGoods = new HashSet<TradeGoodType>();
+
+        for (int i = 0; i < data.goods.Length; i++)
+        {
+            TradeGoodType chosen = TradeGoodType.None;
+
+            int safety = 100;
+            while (safety-- > 0)
+            {
+                var candidate = weightedPool[rng.Next(weightedPool.Count)];
+                if (candidate == TradeGoodType.None) continue;
+                if (chosenGoods.Contains(candidate)) continue;
+
+                chosen = candidate;
+                break;
+            }
+
+            if (chosen == TradeGoodType.None)
+                break;
+
+            chosenGoods.Add(chosen);
+
+            int basePrice = GetBasePrice(chosen);
+            float modifier = (float)(0.9 + rng.NextDouble() * 0.2);
+
+            bool crossBiome =
+                (town.biomeType == TownBiomeType.Grassland && IsDesertGood(chosen)) ||
+                (town.biomeType == TownBiomeType.Desert && IsGrasslandGood(chosen));
+
+            if (crossBiome)
+                modifier *= 3f;
+
+            int finalPrice = Mathf.Max(1, Mathf.RoundToInt(basePrice * modifier));
+
+            data.goods[i] = new ShopItemData
+            {
+                type = chosen,
+                price = finalPrice
+            };
+        }
+        
+        data.sellPrices = GenerateSellPricesForTown(town, data, rng);
+
+        town.marketData = data;
+    }
+    
+    private bool IsGrasslandGood(TradeGoodType g)
+    {
+        return g == TradeGoodType.Tea ||
+               g == TradeGoodType.Paper ||
+               g == TradeGoodType.Porcelain ||
+               g == TradeGoodType.Jade ||
+               g == TradeGoodType.Silk;
+    }
+
+    private bool IsDesertGood(TradeGoodType g)
+    {
+        return g == TradeGoodType.Dyes ||
+               g == TradeGoodType.Incense ||
+               g == TradeGoodType.Spices ||
+               g == TradeGoodType.Glassware ||
+               g == TradeGoodType.Carpets;
+    }
+
+    private int GetBasePrice(TradeGoodType g)
+    {
+        switch (g)
+        {
+            case TradeGoodType.Silk: return 10;
+            case TradeGoodType.Tea: return 6;
+            case TradeGoodType.Paper: return 5;
+            case TradeGoodType.Porcelain: return 8;
+            case TradeGoodType.Dyes: return 7;
+            case TradeGoodType.Glassware: return 9;
+            case TradeGoodType.Spices: return 8;
+            case TradeGoodType.Incense: return 7;
+            case TradeGoodType.Jade: return 12;
+            case TradeGoodType.Carpets: return 9;
+            default: return 5;
+        }
+    }
+    
+    private bool TownCurrentlySellsGood(TownMarketData data, TradeGoodType type)
+    {
+        if (data == null || data.goods == null)
+            return false;
+
+        for (int i = 0; i < data.goods.Length; i++)
+        {
+            if (data.goods[i] != null && data.goods[i].type == type)
+                return true;
+        }
+
+        return false;
+    }
+    
+    private SellPriceData[] GenerateSellPricesForTown(TownInstance town, TownMarketData data, System.Random rng)
+    {
+        List<SellPriceData> result = new List<SellPriceData>();
+
+        TradeGoodType[] allGoods = (TradeGoodType[])Enum.GetValues(typeof(TradeGoodType));
+
+        for (int i = 0; i < allGoods.Length; i++)
+        {
+            TradeGoodType type = allGoods[i];
+            if (type == TradeGoodType.None)
+                continue;
+
+            int basePrice = GetBasePrice(type);
+
+            bool isGrassland = IsGrasslandGood(type);
+            bool isDesert = IsDesertGood(type);
+
+            bool sameBiome =
+                (town.biomeType == TownBiomeType.Grassland && isGrassland) ||
+                (town.biomeType == TownBiomeType.Desert && isDesert);
+
+            bool townSellsThis = TownCurrentlySellsGood(data, type);
+            
+            if (townSellsThis)
+            {
+                int stockedSellPrice = Mathf.Max(1, Mathf.RoundToInt(basePrice * 0.6f));
+
+                result.Add(new SellPriceData
+                {
+                    type = type,
+                    price = stockedSellPrice
+                });
+
+                continue;
+            }
+
+            float multiplier;
+
+            if (sameBiome)
+                multiplier = Mathf.Lerp(0.95f, 1.25f, (float)rng.NextDouble());
+            else
+                multiplier = Mathf.Lerp(1.6f, 2.4f, (float)rng.NextDouble());
+
+            multiplier *= 1.2f;
+
+            int sellPrice = Mathf.Max(1, Mathf.RoundToInt(basePrice * multiplier));
+
+            result.Add(new SellPriceData
+            {
+                type = type,
+                price = sellPrice
+            });
+        }
+
+        return result.ToArray();
+    }
+    
+    private int GetShopPriceForGood(TownMarketData data, TradeGoodType type)
+    {
+        if (data == null || data.goods == null)
+            return -1;
+
+        for (int i = 0; i < data.goods.Length; i++)
+        {
+            if (data.goods[i] != null && data.goods[i].type == type)
+                return data.goods[i].price;
+        }
+
+        return -1;
     }
 }

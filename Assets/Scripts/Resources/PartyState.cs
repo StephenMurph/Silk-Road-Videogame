@@ -255,6 +255,26 @@ public class PartyState
         return true;
     }
 
+    public bool TryAddMember(string newMemberName, int goldCostPerTurn, int foodCostPerTurn, int waterCostPerTurn)
+    {
+        InitializeIfNeeded();
+
+        if (MemberCount >= maxPartySize)
+            return false;
+
+        members.Add(new PartyMemberState
+        {
+            memberName = string.IsNullOrWhiteSpace(newMemberName) ? $"Member {MemberCount + 1}" : newMemberName,
+            maxHealth = 100,
+            currentHealth = 100,
+            goldCostPerTurn = Mathf.Max(0, goldCostPerTurn),
+            foodCostPerTurn = Mathf.Max(0, foodCostPerTurn),
+            waterCostPerTurn = Mathf.Max(0, waterCostPerTurn)
+        });
+
+        return true;
+    }
+
     public bool TryRemoveMemberAt(int memberIndex)
     {
         if (members == null) return false;
