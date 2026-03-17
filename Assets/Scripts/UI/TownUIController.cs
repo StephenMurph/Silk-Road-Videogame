@@ -148,25 +148,25 @@ public class TownUIController : MonoBehaviour
     [SerializeField] private RunState runState;
     [SerializeField] private PartyHUDController partyHUD;
     [SerializeField] private ResourceHUDController resourceHUD;
-    [SerializeField] private TerrainTownRoadSystem townSystem;
+    [SerializeField] private TownManager townSystem;
     [SerializeField] private WorldMarketState marketState;
 
     private int selectedRestTurns = 0;
     private bool isResting = false;
     private bool stopRestRequested = false;
     private Coroutine activeRestRoutine;
-    private TerrainTownRoadSystem.TownInstance currentTown;
+    private TownManager.TownInstance currentTown;
 
     private void Awake()
     {
         if (!runState) runState = FindFirstObjectByType<RunState>();
         if (!partyHUD) partyHUD = FindFirstObjectByType<PartyHUDController>();
         if (!resourceHUD) resourceHUD = FindFirstObjectByType<ResourceHUDController>();
-        if (!townSystem) townSystem = FindFirstObjectByType<TerrainTownRoadSystem>();
+        if (!townSystem) townSystem = FindFirstObjectByType<TownManager>();
         if (!marketState) marketState = FindFirstObjectByType<WorldMarketState>();
     }
     
-    public void ShowTown(TerrainTownRoadSystem.TownInstance town)
+    public void ShowTown(TownManager.TownInstance town)
     {
         if (town == null)
             return;

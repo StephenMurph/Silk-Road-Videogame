@@ -16,7 +16,8 @@ public class PlayerTravelController : MonoBehaviour
 
     [Header("Refs")]
     [SerializeField] private Terrain terrain;
-    [SerializeField] private TerrainTownRoadSystem townSystem;
+    [SerializeField] private TownManager townSystem;
+    [SerializeField] private TerrainRoadGeneratorComponent roadGenerator;
     [SerializeField] private WorldMapUI worldMapUI;
     [SerializeField] private CameraFollowPlayer cameraFollow;
 
@@ -26,8 +27,6 @@ public class PlayerTravelController : MonoBehaviour
 
     [Header("Dice")]
     [SerializeField] private GameObject dicePrefab;
-    [SerializeField] private float delayAfterEachRoll = 0.15f;
-    [SerializeField] private float delayBeforeTravel = 0.25f;
 
     [Header("Path / Hops")]
     [SerializeField] private float minDistanceFromTownWorld = 12f;
@@ -48,7 +47,6 @@ public class PlayerTravelController : MonoBehaviour
     [Header("Companions")]
     [SerializeField] private GameObject companionPrefab;
     [SerializeField] private float companionFollowStartDelay = 0.55f;
-    [SerializeField] private float companionSpawnSideOffset = 1.25f;
     
     private readonly List<PlayerMotor> companions = new();
     private readonly List<int> companionSpaceIndices = new();
@@ -76,7 +74,8 @@ public class PlayerTravelController : MonoBehaviour
     void Awake()
     {
         if (!terrain) terrain = FindFirstObjectByType<Terrain>();
-        if (!townSystem) townSystem = FindFirstObjectByType<TerrainTownRoadSystem>();
+        if (!townSystem) townSystem = FindFirstObjectByType<TownManager>();
+        if (!roadGenerator) roadGenerator = FindFirstObjectByType<TerrainRoadGeneratorComponent>();
         if (!worldMapUI) worldMapUI = FindFirstObjectByType<WorldMapUI>();
         if (!cameraFollow) cameraFollow = FindFirstObjectByType<CameraFollowPlayer>();
         if (!runState) runState = FindFirstObjectByType<RunState>();
@@ -98,7 +97,10 @@ public class PlayerTravelController : MonoBehaviour
     void Start()
     {
         if (townSystem != null && townSystem.towns.Count == 0)
-            townSystem.GenerateTownsAndRoads();
+            townSystem.GenerateTowns();
+
+        if (roadGenerator != null && roadGenerator.edgesNZ.Count == 0)
+            roadGenerator.GenerateRoads();
 
         if (townSystem == null || townSystem.towns.Count == 0)
         {

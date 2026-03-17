@@ -10,7 +10,6 @@ public class PlayerMotor : MonoBehaviour
 
     [Header("Grounding")]
     [SerializeField] private float groundOffset = 0.12f;
-    [SerializeField] private float terrainProbeExtraHeight = 2f;
 
     [Header("Rotation")]
     [SerializeField] private float facingSmooth = 14f;

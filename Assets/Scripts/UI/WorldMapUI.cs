@@ -8,7 +8,8 @@ public class WorldMapUI : MonoBehaviour
 {
     [Header("Refs")]
     public TerrainManager terrainManager;
-    public TerrainTownRoadSystem townSystem;
+    public TownManager townSystem;
+    public TerrainRoadGeneratorComponent roadGenerator;
 
     [Header("Map")]
     public RawImage mapImage;          
@@ -57,11 +58,16 @@ public class WorldMapUI : MonoBehaviour
             Debug.LogError("WorldMapUI: Missing references.");
             return;
         }
+        
+        if (!roadGenerator) roadGenerator = FindFirstObjectByType<TerrainRoadGeneratorComponent>();
 
         if (townSystem.towns.Count == 0)
         {
             Debug.Log("WorldMapUI: No towns yet — generating now...");
-            townSystem.GenerateTownsAndRoads();
+            townSystem.GenerateTowns();
+            var roadGenerator = FindFirstObjectByType<TerrainRoadGeneratorComponent>();
+            if (roadGenerator != null)
+                roadGenerator.GenerateRoads();
             Debug.Log($"WorldMapUI: towns after generate = {townSystem.towns.Count}");
         }
 
@@ -133,9 +139,9 @@ public class WorldMapUI : MonoBehaviour
 
     private void DrawRoads(Texture2D tex)
     {
-        if (townSystem == null || townSystem.edgesNZ == null) return;
+        if (townSystem == null || roadGenerator.edgesNZ == null) return;
 
-        foreach (var edge in townSystem.edgesNZ)
+        foreach (var edge in roadGenerator.edgesNZ)
         {
             if (!TerrainRoadGenerator.TryGetRoadPathNZ(edge.aNZ, edge.bNZ, out var pathNZ))
                 continue;
@@ -232,7 +238,7 @@ public class WorldMapUI : MonoBehaviour
 
     private void RefreshSelectableDots()
     {
-        var neighbors = (townSystem.adjacency != null && townSystem.adjacency.TryGetValue(currentTownId, out var list))
+        var neighbors = (roadGenerator.adjacency != null && roadGenerator.adjacency.TryGetValue(currentTownId, out var list))
             ? list
             : null;
 
@@ -249,7 +255,7 @@ public class WorldMapUI : MonoBehaviour
 
     public void OnTownClicked(int townId)
     {
-        if (!townSystem.adjacency.TryGetValue(currentTownId, out var neigh))
+        if (!roadGenerator.adjacency.TryGetValue(currentTownId, out var neigh))
         {
             Debug.LogError("No adjacency list for current town!");
             return;

@@ -18,7 +18,6 @@ public static class TerrainTreeSpawner
         Vector2 scaleRange,
         float minSpacingWorld = 0f,
         bool clearExistingTrees = false,
-        System.Func<float, float, float> lakeMask01 = null,
         float blockedCutoff = 0.5f,
         float seaLevel01 = 0.08f,
         float seaBuffer01 = 0.01f
@@ -80,9 +79,6 @@ public static class TerrainTreeSpawner
             
             float mountain = biomeMountainMask01 != null ? Mathf.Clamp01(biomeMountainMask01(nx, nz)) : 0f;
             if (mountain >= mountainCutoff) continue;
-            
-            float blocked = lakeMask01 != null ? Mathf.Clamp01(lakeMask01(nx, nz)) : 0f;
-            if (blocked >= blockedCutoff) continue;
             
             
 

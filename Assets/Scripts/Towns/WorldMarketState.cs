@@ -14,7 +14,7 @@ public class WorldMarketState : MonoBehaviour
         RollNextThreshold();
     }
 
-    public void OnTownArrival(TerrainTownRoadSystem townSystem, int arrivedTownIndex)
+    public void OnTownArrival(TownManager townSystem, int arrivedTownIndex)
     {
         arrivalsSinceRefresh++;
 

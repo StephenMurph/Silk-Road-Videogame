@@ -80,31 +80,6 @@ public class TerrainManager : MonoBehaviour
 
     [Tooltip("Extra coast/edge exclusion for cactuses. Set to 0 to allow spawning all the way to the edge. 0.2 is a good starting point.")]
     [Range(0f, 1f)] public float cactusCoastBlock01 = 0.2f;
-
-    [Header("Lake Generation")]
-    public bool generateLake = true;
-    [Min(5f)] public float lakeRadiusWorld = 35f;
-    [Range(0f, 0.5f)] public float lakeMaxDepth01 = 0.06f;
-
-    [Range(0f, 0.5f)] public float lakeEdgeMargin01 = 0.12f; 
-    [Range(0f, 0.5f)] public float lakeShoreClearance01 = 0.02f;
-    [Range(0f, 0.5f)] public float lakeMinAboveSea01 = 0.03f;     
-    [Range(0f, 0.5f)] public float lakeMaxDropFromLocal01 = 0.12f;
-    
-    [Header("Lake Shape")]
-    [Range(0.5f, 2f)] public float lakeOvalAspect = 1.35f; 
-    [Range(0f, 180f)] public float lakeRotationDeg = 0f;   
-    public bool randomizeLakeRotation = true;
-
-    [Range(0f, 0.6f)] public float lakeShoreWobble01 = 0.18f; 
-    [Min(0.1f)] public float lakeWobbleScale = 2.5f;
-
-    [Header("Lake Water Object")]
-    public Material waterMaterial; 
-    public string lakeObjectName = "Generated Lake";
-    private bool hasLake;
-    private Vector2 lakeCenterNZ;
-    private float lakeWaterLevel01Actual;
     
     public float SendMessageDesertMask(float nx, float nz) => DesertMaskFromRegions01(nx, nz);
     public float SendMessageMountainMask(float nx, float nz) => MountainMaskFromRegions01(nx, nz);
@@ -152,7 +127,6 @@ public class TerrainManager : MonoBehaviour
         if (octaves < 1) octaves = 1;
         if (lacunarity < 1f) lacunarity = 1f;
     }
-    private float lakeRotationRad;
 
     [ContextMenu("Regenerate")]
     public void Regenerate()
@@ -174,54 +148,27 @@ public class TerrainManager : MonoBehaviour
 
         data.SetHeights(0, 0, heights);
         
-        hasLake = false;
-
-        if (generateLake)
-        {
-            if (TryPickLakeCenterNZ(data, tries: 2000, out lakeCenterNZ))
-            {
-                if (randomizeLakeRotation)
-                {
-                    var rng = new System.Random(seed ^ 0x1234ABCD);
-                    lakeRotationRad = Mathf.Deg2Rad * (float)(rng.NextDouble() * 180.0);
-                }
-                else
-                {
-                    lakeRotationRad = Mathf.Deg2Rad * lakeRotationDeg;
-                }
-
-                float localH01 = Mathf.Clamp01(data.GetInterpolatedHeight(lakeCenterNZ.x, lakeCenterNZ.y) / data.size.y);
-
-                float desired = localH01 - lakeShoreClearance01;        
-                float minAllowed = seaLevel01 + lakeMinAboveSea01;      
-                float maxAllowed = localH01 - lakeMaxDropFromLocal01;   
-
-                lakeWaterLevel01Actual = Mathf.Clamp(desired, minAllowed, maxAllowed);
-                
-                CarveLakeBasin(data, heights, lakeCenterNZ, lakeWaterLevel01Actual, lakeRadiusWorld, lakeMaxDepth01);
-                data.SetHeights(0, 0, heights);
-
-                hasLake = true;
-                
-                CreateOrUpdateLakeWater(data, lakeCenterNZ, lakeWaterLevel01Actual, lakeRadiusWorld);
-            }
-            else
-            {
-                Debug.LogWarning("LakeGen: could not find a suitable grassland location.");
-            }
-        }
-        
         
         ApplyFixedBiomeTextures();
         
-        var townSystem = GetComponent<TerrainTownRoadSystem>();
-        if (townSystem != null)
+        var townManager = GetComponent<TownManager>();
+        if (townManager != null)
         {
-            townSystem.GenerateTownsAndRoads();
+            townManager.GenerateTowns();
         }
         else
         {
-            Debug.LogWarning("No TerrainTownRoadSystem found (no towns/roads generated).");
+            Debug.LogWarning("No TownManager found (no towns generated).");
+        }
+
+        var roadGenerator = GetComponent<TerrainRoadGeneratorComponent>();
+        if (roadGenerator != null)
+        {
+            roadGenerator.GenerateRoads();
+        }
+        else
+        {
+            Debug.LogWarning("No TerrainRoadGeneratorComponent found (no roads generated).");
         }
         
         TerrainGrassSpawner.SpawnGrassAsTrees(
@@ -236,8 +183,6 @@ public class TerrainManager : MonoBehaviour
 
                 float desert = DesertMaskFromRegions01(nx, nz);
                 if (desert > 0.2f) return 0f;
-                
-                if (LakeMask01(nx, nz, extraBufferWorld: 2.5f) > 0f) return 0f;
 
                 float grass = Mathf.Pow(1f - desert, 3.0f);
 
@@ -272,7 +217,6 @@ public class TerrainManager : MonoBehaviour
             scaleRange: treeScaleRange,
             minSpacingWorld: treeMinSpacingWorld,
             clearExistingTrees: false,
-            lakeMask01: (nx, nz) => LakeMask01(nx, nz, extraBufferWorld: 6f),
             blockedCutoff: 0.5f,
             seaLevel01: seaLevel01,
             seaBuffer01: 0.01f
@@ -293,7 +237,6 @@ public class TerrainManager : MonoBehaviour
             scaleRange: cactusScaleRange,
             minSpacingWorld: cactusMinSpacingWorld,
             clearExistingCactuses: false,
-            lakeMask01: (nx, nz) => LakeMask01(nx, nz, extraBufferWorld: 6f),
             blockedCutoff: 0.5f,
             seaLevel01: seaLevel01,
             seaBuffer01: 0.01f
@@ -427,50 +370,6 @@ private float EdgeMask01(float nx, float nz)
     t = Mathf.Clamp01(t);
 
     return edgeFalloffCurve != null ? Mathf.Clamp01(edgeFalloffCurve.Evaluate(t)) : t;
-}
-
-public float LakeMask01(float nx, float nz, float extraBufferWorld = 0f)
-{
-    if (!hasLake || !terrain) return 0f;
-
-    TerrainData data = terrain.terrainData;
-
-
-    float dxW = (nx - lakeCenterNZ.x) * data.size.x;
-    float dzW = (nz - lakeCenterNZ.y) * data.size.z;
-    
-    float cosR = Mathf.Cos(lakeRotationRad);
-    float sinR = Mathf.Sin(lakeRotationRad);
-
-    float rx = dxW * cosR - dzW * sinR;
-    float rz = dxW * sinR + dzW * cosR;
-    
-    float baseRadius = lakeRadiusWorld + extraBufferWorld;
-    float a = baseRadius * lakeOvalAspect;
-    float b = baseRadius / lakeOvalAspect;
-    
-    float wobbleOffX = (seed * 0.00123f) % 1000f;
-    float wobbleOffZ = (seed * 0.00456f) % 1000f;
-
-    float pn = Mathf.PerlinNoise(
-        (rx / (lakeRadiusWorld * lakeWobbleScale)) + wobbleOffX,
-        (rz / (lakeRadiusWorld * lakeWobbleScale)) + wobbleOffZ
-    );
-
-    float wobble = (pn * 2f - 1f) * lakeShoreWobble01;
-
-    float ang = Mathf.Atan2(rz, rx);
-    float wobbleAng = Mathf.Sin(ang * 3f) * (lakeShoreWobble01 * 0.35f);
-    
-    float aa = a * (1f + wobble + wobbleAng);
-    float bb = b * (1f + wobble + wobbleAng);
-
-
-    float u = rx / Mathf.Max(0.001f, aa);
-    float v = rz / Mathf.Max(0.001f, bb);
-    float d = Mathf.Sqrt(u * u + v * v); 
-    
-    return (d <= 1f) ? 1f : 0f;
 }
 
 private static float FractalPerlin01(
@@ -677,147 +576,6 @@ private BiomeWeights BiomeWeightsFromRegions(float nx, float nz)
 
         data.SetAlphamaps(0, 0, maps);
         terrain.Flush();
-    }
-    
-    private bool TryPickLakeCenterNZ(TerrainData data, int tries, out Vector2 centerNZ)
-    {
-        var rng = new System.Random(seed ^ 0xC0FFEE);
-
-        for (int i = 0; i < tries; i++)
-        {
-            float nx = (float)rng.NextDouble();
-            float nz = (float)rng.NextDouble();
-            
-            float dEdge = Mathf.Min(nx, 1f - nx, nz, 1f - nz);
-            if (dEdge < lakeEdgeMargin01) continue;
-            
-            var w = BiomeWeightsFromRegions(nx, nz);
-            if (w.desert > 0.20f) continue;
-            if (w.mountain > 0.20f) continue;
-            
-            float slope = data.GetSteepness(nx, nz);
-            if (slope > 20f) continue;
-            
-            float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
-            if (h01 < seaLevel01 + lakeMinAboveSea01 + 0.02f) continue;
-            
-            float road = TerrainRoadGenerator.SampleRoadMask01(data, nx, nz);
-            if (road > 0.15f) continue;
-
-            centerNZ = new Vector2(nx, nz);
-            return true;
-        }
-
-        centerNZ = default;
-        return false;
-    }
-    
-private void CarveLakeBasin(
-    TerrainData data,
-    float[,] heights,
-    Vector2 centerNZ,
-    float waterLevel01,
-    float baseRadiusWorld,
-    float maxDepth01
-)
-{
-    int hm = data.heightmapResolution;
-    float worldPerX = data.size.x / (hm - 1);
-    float worldPerZ = data.size.z / (hm - 1);
-    
-    float cx = centerNZ.x * (hm - 1);
-    float cz = centerNZ.y * (hm - 1);
-    
-    float maxRadiusWorld = baseRadiusWorld * (1f + lakeShoreWobble01 + 0.25f);
-    int rPx = Mathf.CeilToInt(maxRadiusWorld / Mathf.Min(worldPerX, worldPerZ));
-
-    int xmin = Mathf.Clamp((int)cx - rPx, 0, hm - 1);
-    int xmax = Mathf.Clamp((int)cx + rPx, 0, hm - 1);
-    int zmin = Mathf.Clamp((int)cz - rPx, 0, hm - 1);
-    int zmax = Mathf.Clamp((int)cz + rPx, 0, hm - 1);
-    
-    float floor01 = Mathf.Max(seaLevel01 - 0.02f, waterLevel01 - lakeMaxDepth01);
-    
-    float a = baseRadiusWorld * lakeOvalAspect; 
-    float b = baseRadiusWorld / lakeOvalAspect; 
-    
-    float cosR = Mathf.Cos(lakeRotationRad);
-    float sinR = Mathf.Sin(lakeRotationRad);
-    
-    float wobbleOffX = (seed * 0.00123f) % 1000f;
-    float wobbleOffZ = (seed * 0.00456f) % 1000f;
-
-    for (int z = zmin; z <= zmax; z++)
-    for (int x = xmin; x <= xmax; x++)
-    {
-        float dxW = (x - cx) * worldPerX;
-        float dzW = (z - cz) * worldPerZ;
-        
-        float rx = dxW * cosR - dzW * sinR;
-        float rz = dxW * sinR + dzW * cosR;
-        
-        float ang = Mathf.Atan2(rz, rx); 
-        
-        float pn = Mathf.PerlinNoise((rx / (baseRadiusWorld * lakeWobbleScale)) + wobbleOffX,
-                                     (rz / (baseRadiusWorld * lakeWobbleScale)) + wobbleOffZ);
-        float wobble = (pn * 2f - 1f) * lakeShoreWobble01;
-        
-        float wobbleAng = Mathf.Sin(ang * 3f) * (lakeShoreWobble01 * 0.35f);
-        
-        float aa = a * (1f + wobble + wobbleAng);
-        float bb = b * (1f + wobble + wobbleAng);
-        
-        float u = rx / Mathf.Max(0.001f, aa);
-        float v = rz / Mathf.Max(0.001f, bb);
-        float d = Mathf.Sqrt(u * u + v * v);
-
-        if (d > 1f) continue;
-        
-        float t = 1f - d;
-        t = t * t * (3f - 2f * t);
-
-        float target = waterLevel01 - maxDepth01 * t;
-        target = Mathf.Max(target, floor01);
-
-        heights[z, x] = Mathf.Min(heights[z, x], target);
-    }
-}
-    private void CreateOrUpdateLakeWater(
-        TerrainData data,
-        Vector2 lakeCenterNZ,
-        float waterLevel01,
-        float radiusWorld
-    )
-    {
-        Transform t = transform.Find(lakeObjectName);
-        GameObject go = t ? t.gameObject : new GameObject(lakeObjectName);
-        go.transform.SetParent(transform, false);
-
-        MeshFilter mf = go.GetComponent<MeshFilter>();
-        MeshRenderer mr = go.GetComponent<MeshRenderer>();
-        if (!mf) mf = go.AddComponent<MeshFilter>();
-        if (!mr) mr = go.AddComponent<MeshRenderer>();
-        
-        var temp = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        mf.sharedMesh = temp.GetComponent<MeshFilter>().sharedMesh;
-        DestroyImmediate(temp);
-
-        if (waterMaterial) mr.sharedMaterial = waterMaterial;
-
-        float worldX = lakeCenterNZ.x * data.size.x + terrain.transform.position.x;
-        float worldZ = lakeCenterNZ.y * data.size.z + terrain.transform.position.z;
-        float worldY = terrain.transform.position.y + waterLevel01 * data.size.y;
-
-        go.transform.position = new Vector3(worldX, worldY, worldZ);
-
-        float a = lakeRadiusWorld * lakeOvalAspect;     
-        float b = lakeRadiusWorld / lakeOvalAspect;     
-
-        go.transform.localScale = new Vector3(a * 2f, 0.05f, b * 2f);
-        go.transform.rotation = Quaternion.Euler(0f, lakeRotationRad * Mathf.Rad2Deg, 0f);
-        
-        var col = go.GetComponent<Collider>();
-        if (col) col.enabled = false;
     }
     
     public Texture2D BuildBiomeMapTexture(int size)

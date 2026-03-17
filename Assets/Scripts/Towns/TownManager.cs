@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 
-public class TerrainTownRoadSystem : MonoBehaviour
+public class TownManager : MonoBehaviour
 {
     [Header("Refs")]
     public TerrainManager terrainManager;   
@@ -25,51 +25,13 @@ public class TerrainTownRoadSystem : MonoBehaviour
 
     [Tooltip("Don’t place towns in strong mountain biome.")]
     [Range(0f, 1f)] public float mountainBlockCutoff = 0.35f;
-
-    [Tooltip("Avoid lake area (meters).")]
-    public float lakeAvoidBufferWorld = 10f;
-
-    [Header("Road Network")]
-    [Tooltip("Max distance in world meters to connect towns.")]
-    public float connectMaxDistanceWorld = 420f;
-
-    [Tooltip("Max number of road connections per town.")]
-    public int maxConnectionsPerTown = 2;
-
-    [Tooltip("Chance to add one extra branch connection (if a valid neighbor exists).")]
-    [Range(0f, 1f)] public float extraBranchChance = 0.25f;
     
-    public List<TerrainRoadGenerator.RoadEdgeNZ> edgesNZ = new();
-    public Dictionary<int, List<int>> adjacency = new();
-
-    [Header("Road Paint Settings (match your TerrainRoadGenerator layers)")]
-    public int roadLayerIndex = 3;   
-    public int trailLayerIndex = 4;  
-
-    public float grassRoadHalfWidthWorld = 7f;
-    public float desertTrailHalfWidthWorld = 3.5f;
-    [Range(0f, 1f)] public float desertCutoff = 0.35f;
-    [Range(0f, 1f)] public float paintStrength = 0.85f;
-
-    [Header("A* Settings")]
-    public int gridSize = 256;
-    public float maxSlopeDegrees = 35f;
-    public float mountainAvoidance = 20f;
-    [Range(0f, 1f)] public float mountainRoadBlockCutoff = 0.5f;
-
     [Header("Debug")]
     public bool clearExistingTowns = true;
     public string townRootName = "TownsRoot";
-    
-    [Header("Main Road Settings")]
-    [Tooltip("How strongly branch roads prefer snapping onto the main road (0 = off).")]
-    [Range(0f, 1f)] public float branchRoadAttraction = 0.85f;
 
-    [Tooltip("Chance to add extra cross-links (minor roads) after the main road exists.")]
-    [Range(0f, 1f)] public float crossLinkChance = 0.15f;
-
-    [Tooltip("How many cross-links per town attempt.")]
-    [Range(0, 3)] public int crossLinksPerTown = 1;
+    [Header("Biome / Market")]
+    [Range(0f, 1f)] public float desertCutoff = 0.35f;
     
     [Header("Town Photos")]
     public List<TownPhotoEntry> townPhotos = new();
@@ -179,109 +141,27 @@ public class TerrainTownRoadSystem : MonoBehaviour
 
     public readonly List<TownInstance> towns = new();
 
-   public void GenerateTownsAndRoads()
-{
-    if (!terrainManager) terrainManager = GetComponent<TerrainManager>();
-    if (!terrain) terrain = terrainManager ? terrainManager.GetComponent<Terrain>() : null;
-    if (!terrainManager || !terrain || !housePrefab)
+    public void GenerateTowns()
     {
-        Debug.LogError("TerrainTownRoadSystem: missing refs (terrainManager/terrain/housePrefab).");
-        return;
+        if (!terrainManager) terrainManager = GetComponent<TerrainManager>();
+        if (!terrain) terrain = terrainManager ? terrainManager.GetComponent<Terrain>() : null;
+
+        if (!terrainManager || !terrain || !housePrefab)
+        {
+            Debug.LogError("TownManager: missing refs (terrainManager/terrain/housePrefab).");
+            return;
+        }
+
+        SpawnTowns(terrain.terrainData);
+        RefreshAllTownMarkets(0);
+
+        Debug.Log($"TownManager: spawned {towns.Count} towns.");
     }
-
-    var data = terrain.terrainData;
-
-    SpawnTowns(data);
-    
-    var townsNZ = new List<Vector2>(towns.Count);
-    for (int i = 0; i < towns.Count; i++)
-        townsNZ.Add(towns[i].nz);
-    
-    var allEdges = TerrainRoadGenerator.BuildMainAndBranchEdges(
-        townsNZ: townsNZ,
-        seed: townSeed,
-        extraConnectionChance: crossLinkChance,
-        extraConnectionsPerTown: crossLinksPerTown
-    );
-
-    if (townsNZ.Count < 2 || allEdges.Count == 0)
-    {
-        Debug.LogWarning("TownRoadSystem: not enough towns/edges to generate roads.");
-        return;
-    }
-
-    int mainCount = Mathf.Max(0, townsNZ.Count - 1);
-    mainCount = Mathf.Min(mainCount, allEdges.Count);
-
-    var mainEdges = allEdges.GetRange(0, mainCount);
-    var branchEdges = allEdges.GetRange(mainCount, allEdges.Count - mainCount);
-    
-    float edgeBlockCutoff = 0.05f;
-    
-    Func<float, float, float> desertMask = (nx, nz) => terrainManager.SendMessageDesertMask(nx, nz);
-    Func<float, float, float> mountainMask = (nx, nz) => terrainManager.SendMessageMountainMask(nx, nz);
-    Func<float, float, float> edgeMask = (nx, nz) => terrainManager.SendMessageEdgeMask(nx, nz);
-
-    
-    TerrainRoadGenerator.GenerateRoadNetwork(
-        terrain: terrain,
-        desertMask01: desertMask,
-        mountainMask01: mountainMask,
-        edgeMask01: edgeMask,
-        seed: townSeed ^ 0x51A71,
-        edgesNZ: mainEdges,
-        gridSize: gridSize,
-        desertCutoff: desertCutoff,
-        maxSlopeDegrees: maxSlopeDegrees,
-        roadLayerIndex: roadLayerIndex,
-        trailLayerIndex: trailLayerIndex,
-        grassRoadHalfWidthWorld: grassRoadHalfWidthWorld,
-        desertTrailHalfWidthWorld: desertTrailHalfWidthWorld,
-        paintStrength: paintStrength,
-        mountainAvoidance: mountainAvoidance,
-        mountainBlockCutoff: mountainRoadBlockCutoff,
-        edgeBlockCutoff: edgeBlockCutoff,
-        clearRoadMaskFirst: true,
-        roadAttraction: 0f
-    );
-    
-    if (branchEdges.Count > 0 && branchRoadAttraction > 0f)
-    {
-        TerrainRoadGenerator.GenerateRoadNetwork(
-            terrain: terrain,
-            desertMask01: desertMask,
-            mountainMask01: mountainMask,
-            edgeMask01: edgeMask,
-            seed: townSeed ^ 0x51A71,
-            edgesNZ: branchEdges,
-            gridSize: gridSize,
-            desertCutoff: desertCutoff,
-            maxSlopeDegrees: maxSlopeDegrees,
-            roadLayerIndex: roadLayerIndex,
-            trailLayerIndex: trailLayerIndex,
-            grassRoadHalfWidthWorld: grassRoadHalfWidthWorld,
-            desertTrailHalfWidthWorld: desertTrailHalfWidthWorld,
-            paintStrength: paintStrength,
-            mountainAvoidance: mountainAvoidance,
-            mountainBlockCutoff: mountainRoadBlockCutoff,
-            edgeBlockCutoff: edgeBlockCutoff,
-            clearRoadMaskFirst: false,
-            roadAttraction: branchRoadAttraction
-        );
-    }
-    
-    edgesNZ = allEdges;
-    BuildAdjacencyFromEdges();
-    
-    RefreshAllTownMarkets(0);
-
-    Debug.Log($"TownRoadSystem: towns={towns.Count}, mainEdges={mainEdges.Count}, branchEdges={branchEdges.Count}, totalEdges={edgesNZ.Count}");
-}
 
     void SpawnTowns(TerrainData data)
     {
         towns.Clear();
-        
+
         Transform root = transform.Find(townRootName);
         if (!root)
         {
@@ -289,6 +169,7 @@ public class TerrainTownRoadSystem : MonoBehaviour
             go.transform.SetParent(transform, false);
             root = go.transform;
         }
+
         if (clearExistingTowns)
         {
             for (int i = root.childCount - 1; i >= 0; i--)
@@ -297,12 +178,271 @@ public class TerrainTownRoadSystem : MonoBehaviour
 
         var rng = new System.Random(townSeed);
         HashSet<string> usedTownNames = new HashSet<string>();
-        
+
         Dictionary<int, List<Vector2>> buckets = null;
         float cellSize = townMinSpacingWorld;
-        if (townMinSpacingWorld > 0f) buckets = new Dictionary<int, List<Vector2>>(townCount);
+        if (townMinSpacingWorld > 0f)
+            buckets = new Dictionary<int, List<Vector2>>(townCount);
 
         static int Hash(int x, int z) { unchecked { return x * 73856093 ^ z * 19349663; } }
+
+        bool IsValidTownSpot(float nx, float nz)
+        {
+            float m = terrainManager.SendMessageMountainMask(nx, nz);
+            if (m >= mountainBlockCutoff) return false;
+
+            float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
+            if (h01 <= terrainManager.seaLevel01 + seaBuffer01) return false;
+
+            float slope = data.GetSteepness(nx, nz);
+            if (slope > townMaxSlope) return false;
+
+            return true;
+        }
+
+        bool RespectsSpacing(float nx, float nz)
+        {
+            if (buckets == null) return true;
+
+            Vector2 pW = new Vector2(nx * data.size.x, nz * data.size.z);
+            int cx = Mathf.FloorToInt(pW.x / cellSize);
+            int cz = Mathf.FloorToInt(pW.y / cellSize);
+
+            float minSqr = townMinSpacingWorld * townMinSpacingWorld;
+
+            for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int key = Hash(cx + dx, cz + dz);
+                if (!buckets.TryGetValue(key, out var list)) continue;
+
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if ((list[i] - pW).sqrMagnitude < minSqr)
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        void RegisterSpacing(float nx, float nz)
+        {
+            if (buckets == null) return;
+
+            Vector2 pW = new Vector2(nx * data.size.x, nz * data.size.z);
+            int cx = Mathf.FloorToInt(pW.x / cellSize);
+            int cz = Mathf.FloorToInt(pW.y / cellSize);
+
+            int key = Hash(cx, cz);
+            if (!buckets.TryGetValue(key, out var list))
+                buckets[key] = list = new List<Vector2>(4);
+
+            list.Add(pW);
+        }
+
+        void AddTown(float nx, float nz)
+        {
+            float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
+            Vector3 world = new Vector3(nx * data.size.x, h01 * data.size.y, nz * data.size.z) + terrain.transform.position;
+
+            var goTown = Instantiate(housePrefab, world, Quaternion.identity, root);
+            goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
+
+            TownBiomeType biomeType = GetTownBiomeType(nx, nz);
+            string townName = GetRandomTownName(biomeType, rng, usedTownNames);
+            usedTownNames.Add(townName);
+
+            Sprite townPhoto = GetTownPhoto(townName);
+            RecruitCandidateData[] recruitCandidates = GenerateRecruitCandidates(biomeType, rng);
+
+            towns.Add(new TownInstance
+            {
+                nz = new Vector2(nx, nz),
+                go = goTown,
+                townName = townName,
+                biomeType = biomeType,
+                townPhoto = townPhoto,
+                recruitCandidates = recruitCandidates,
+            });
+
+            RegisterSpacing(nx, nz);
+
+            Debug.Log($"Spawned town: {townName} ({biomeType})");
+        }
+
+        bool TryFindValidPointInRect(Rect rect, int tries, out Vector2 point)
+        {
+            for (int i = 0; i < tries; i++)
+            {
+                float nx = Mathf.Lerp(rect.xMin, rect.xMax, (float)rng.NextDouble());
+                float nz = Mathf.Lerp(rect.yMin, rect.yMax, (float)rng.NextDouble());
+
+                if (!IsValidTownSpot(nx, nz)) continue;
+                if (!RespectsSpacing(nx, nz)) continue;
+
+                point = new Vector2(nx, nz);
+                return true;
+            }
+
+            point = default;
+            return false;
+        }
+
+        bool TryFindCorridorPoint(Vector2 a, Vector2 b, float width01, int tries, out Vector2 point)
+        {
+            Vector2 dir = (b - a).normalized;
+            Vector2 perp = new Vector2(-dir.y, dir.x);
+
+            for (int i = 0; i < tries; i++)
+            {
+                float t = Mathf.Lerp(0.08f, 0.92f, (float)rng.NextDouble());
+                float lateral = ((float)rng.NextDouble() * 2f - 1f) * width01;
+
+                Vector2 p = Vector2.Lerp(a, b, t) + perp * lateral;
+                p.x = Mathf.Clamp01(p.x);
+                p.y = Mathf.Clamp01(p.y);
+
+                if (!IsValidTownSpot(p.x, p.y)) continue;
+                if (!RespectsSpacing(p.x, p.y)) continue;
+
+                point = p;
+                return true;
+            }
+
+            point = default;
+            return false;
+        }
+
+        bool TryFindBranchPoint(Vector2 a, Vector2 b, float minOffset01, float maxOffset01, int tries, out Vector2 point)
+        {
+            Vector2 dir = (b - a).normalized;
+            Vector2 perp = new Vector2(-dir.y, dir.x);
+
+            for (int i = 0; i < tries; i++)
+            {
+                float t = Mathf.Lerp(0.12f, 0.88f, (float)rng.NextDouble());
+                float side = rng.NextDouble() < 0.5 ? -1f : 1f;
+                float lateral = Mathf.Lerp(minOffset01, maxOffset01, (float)rng.NextDouble()) * side;
+
+                Vector2 p = Vector2.Lerp(a, b, t) + perp * lateral;
+                p.x = Mathf.Clamp01(p.x);
+                p.y = Mathf.Clamp01(p.y);
+
+                if (!IsValidTownSpot(p.x, p.y)) continue;
+                if (!RespectsSpacing(p.x, p.y)) continue;
+
+                point = p;
+                return true;
+            }
+
+            point = default;
+            return false;
+        }
+
+        // ---------- 1) choose two endpoint regions ----------
+        Rect leftRect = new Rect(0.05f, 0.10f, 0.20f, 0.80f);
+        Rect rightRect = new Rect(0.75f, 0.10f, 0.20f, 0.80f);
+
+        if (!TryFindValidPointInRect(leftRect, 500, out Vector2 startTown) ||
+            !TryFindValidPointInRect(rightRect, 500, out Vector2 endTown))
+        {
+            Debug.LogWarning("TownRoadSystem: failed to find corridor endpoints, falling back to random spawn.");
+            SpawnTownsFallback(data, root, rng, usedTownNames, buckets);
+            return;
+        }
+
+        AddTown(startTown.x, startTown.y);
+        AddTown(endTown.x, endTown.y);
+
+        // ---------- 2) spawn corridor towns ----------
+        int remaining = Mathf.Max(0, townCount - 2);
+        int corridorCount = Mathf.RoundToInt(remaining * 0.6f);
+        int branchCount = remaining - corridorCount;
+
+        for (int i = 0; i < corridorCount && towns.Count < townCount; i++)
+        {
+            if (TryFindCorridorPoint(startTown, endTown, 0.10f, 600, out Vector2 p))
+                AddTown(p.x, p.y);
+        }
+
+        // ---------- 3) spawn branch towns ----------
+        for (int i = 0; i < branchCount && towns.Count < townCount; i++)
+        {
+            if (TryFindBranchPoint(startTown, endTown, 0.12f, 0.24f, 700, out Vector2 p))
+                AddTown(p.x, p.y);
+        }
+
+        // ---------- 4) emergency fill ----------
+        int safety = Mathf.Max(2000, townCount * 300);
+        for (int tries = 0; tries < safety && towns.Count < townCount; tries++)
+        {
+            float nx = (float)rng.NextDouble();
+            float nz = (float)rng.NextDouble();
+
+            if (!IsValidTownSpot(nx, nz)) continue;
+            if (!RespectsSpacing(nx, nz)) continue;
+
+            AddTown(nx, nz);
+        }
+
+        if (towns.Count < townCount)
+            Debug.LogWarning($"TownRoadSystem: only spawned {towns.Count}/{townCount} towns.");
+    }
+    
+        private void SpawnTownsFallback(
+        TerrainData data,
+        Transform root,
+        System.Random rng,
+        HashSet<string> usedTownNames,
+        Dictionary<int, List<Vector2>> buckets
+    )
+    {
+        towns.Clear();
+
+        float cellSize = townMinSpacingWorld;
+        static int Hash(int x, int z) { unchecked { return x * 73856093 ^ z * 19349663; } }
+
+        bool RespectsSpacing(float nx, float nz)
+        {
+            if (buckets == null) return true;
+
+            Vector2 pW = new Vector2(nx * data.size.x, nz * data.size.z);
+            int cx = Mathf.FloorToInt(pW.x / cellSize);
+            int cz = Mathf.FloorToInt(pW.y / cellSize);
+
+            float minSqr = townMinSpacingWorld * townMinSpacingWorld;
+
+            for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                int key = Hash(cx + dx, cz + dz);
+                if (!buckets.TryGetValue(key, out var list)) continue;
+
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if ((list[i] - pW).sqrMagnitude < minSqr)
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        void RegisterSpacing(float nx, float nz)
+        {
+            if (buckets == null) return;
+
+            Vector2 pW = new Vector2(nx * data.size.x, nz * data.size.z);
+            int cx = Mathf.FloorToInt(pW.x / cellSize);
+            int cz = Mathf.FloorToInt(pW.y / cellSize);
+
+            int key = Hash(cx, cz);
+            if (!buckets.TryGetValue(key, out var list))
+                buckets[key] = list = new List<Vector2>(4);
+
+            list.Add(pW);
+        }
 
         int safety = Mathf.Max(2000, townCount * 200);
 
@@ -310,46 +450,20 @@ public class TerrainTownRoadSystem : MonoBehaviour
         {
             float nx = (float)rng.NextDouble();
             float nz = (float)rng.NextDouble();
-            
+
             float m = terrainManager.SendMessageMountainMask(nx, nz);
             if (m >= mountainBlockCutoff) continue;
-            
-            if (terrainManager.LakeMask01(nx, nz, lakeAvoidBufferWorld) > 0f) continue;
 
             float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
             if (h01 <= terrainManager.seaLevel01 + seaBuffer01) continue;
 
             float slope = data.GetSteepness(nx, nz);
             if (slope > townMaxSlope) continue;
-            
-            if (buckets != null)
-            {
-                Vector2 pW = new Vector2(nx * data.size.x, nz * data.size.z);
-                int cx = Mathf.FloorToInt(pW.x / cellSize);
-                int cz = Mathf.FloorToInt(pW.y / cellSize);
 
-                float minSqr = townMinSpacingWorld * townMinSpacingWorld;
-                bool tooClose = false;
+            if (!RespectsSpacing(nx, nz)) continue;
 
-                for (int dz = -1; dz <= 1 && !tooClose; dz++)
-                for (int dx = -1; dx <= 1 && !tooClose; dx++)
-                {
-                    int key = Hash(cx + dx, cz + dz);
-                    if (!buckets.TryGetValue(key, out var list)) continue;
-                    for (int i = 0; i < list.Count; i++)
-                        if ((list[i] - pW).sqrMagnitude < minSqr) { tooClose = true; break; }
-                }
-                if (tooClose) continue;
-
-                int myKey = Hash(cx, cz);
-                if (!buckets.TryGetValue(myKey, out var mine))
-                    buckets[myKey] = mine = new List<Vector2>(4);
-                mine.Add(pW);
-            }
-            
             Vector3 world = new Vector3(nx * data.size.x, h01 * data.size.y, nz * data.size.z) + terrain.transform.position;
             var goTown = Instantiate(housePrefab, world, Quaternion.identity, root);
-
             goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
 
             TownBiomeType biomeType = GetTownBiomeType(nx, nz);
@@ -369,84 +483,8 @@ public class TerrainTownRoadSystem : MonoBehaviour
                 recruitCandidates = recruitCandidates
             });
 
-            Debug.Log($"Spawned town: {townName} ({biomeType}) | Photo assigned: {(townPhoto != null)} | Recruits: {recruitCandidates.Length}");
+            RegisterSpacing(nx, nz);
         }
-
-        if (towns.Count < townCount)
-            Debug.LogWarning($"TownRoadSystem: only spawned {towns.Count}/{townCount} towns (increase safety / relax constraints).");
-    }
-
-    List<TerrainRoadGenerator.RoadEdgeNZ> BuildLocalEdges(TerrainData data)
-    {
-        var edges = new List<TerrainRoadGenerator.RoadEdgeNZ>();
-        if (towns.Count < 2) return edges;
-
-        float maxD = Mathf.Max(1f, connectMaxDistanceWorld);
-        
-        for (int i = 0; i < towns.Count; i++)
-        {
-            var a = towns[i];
-            
-            var neigh = new List<(int idx, float dist)>();
-            for (int j = 0; j < towns.Count; j++)
-            {
-                if (j == i) continue;
-                float d = WorldDistance(data, a.nz, towns[j].nz);
-                if (d <= maxD) neigh.Add((j, d));
-            }
-
-            neigh.Sort((p, q) => p.dist.CompareTo(q.dist));
-
-            int targetConnections = Mathf.Clamp(maxConnectionsPerTown, 0, 32);
-            if (targetConnections == 0) continue;
-            
-            var rng = new System.Random((townSeed * 397) ^ i);
-            if (rng.NextDouble() < extraBranchChance) targetConnections += 1;
-
-            int made = 0;
-            for (int k = 0; k < neigh.Count && made < targetConnections; k++)
-            {
-                int j = neigh[k].idx;
-                if (i < j)
-                {
-                    edges.Add(new TerrainRoadGenerator.RoadEdgeNZ(a.nz, towns[j].nz));
-                    made++;
-                }
-            }
-        }
-
-        return edges;
-    }
-    
-    void BuildAdjacencyFromEdges()
-    {
-        adjacency.Clear();
-        for (int i = 0; i < towns.Count; i++)
-            adjacency[i] = new List<int>(4);
-
-        foreach (var e in edgesNZ)
-        {
-            int a = FindTownIndex(e.aNZ);
-            int b = FindTownIndex(e.bNZ);
-            if (a < 0 || b < 0 || a == b) continue;
-
-            if (!adjacency[a].Contains(b)) adjacency[a].Add(b);
-            if (!adjacency[b].Contains(a)) adjacency[b].Add(a);
-        }
-    }
-    
-    int FindTownIndex(Vector2 nz)
-    {
-        for (int i = 0; i < towns.Count; i++)
-            if (towns[i].nz == nz) return i;
-        return -1;
-    }
-
-    float WorldDistance(TerrainData data, Vector2 aNZ, Vector2 bNZ)
-    {
-        Vector2 aW = new Vector2(aNZ.x * data.size.x, aNZ.y * data.size.z);
-        Vector2 bW = new Vector2(bNZ.x * data.size.x, bNZ.y * data.size.z);
-        return Vector2.Distance(aW, bW);
     }
     
     private string GetRandomTownName(TownBiomeType biomeType, System.Random rng, HashSet<string> usedNames)

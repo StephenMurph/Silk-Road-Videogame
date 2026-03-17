@@ -18,7 +18,6 @@ public static class TerrainCactusSpawner
         Vector2 scaleRange,
         float minSpacingWorld = 0f,
         bool clearExistingCactuses = false,
-        System.Func<float, float, float> lakeMask01 = null,
         float blockedCutoff = 0.5f,
         float seaLevel01 = 0.08f,
         float seaBuffer01 = 0.01f
@@ -80,9 +79,6 @@ public static class TerrainCactusSpawner
 
             float mountain = biomeMountainMask01 != null ? Mathf.Clamp01(biomeMountainMask01(nx, nz)) : 0f;
             if (mountain >= mountainCutoff) { rejMountain++; continue; }
-
-            float blocked = lakeMask01 != null ? Mathf.Clamp01(lakeMask01(nx, nz)) : 0f;
-            if (blocked >= blockedCutoff) { rejBlocked++; continue; }
 
             float slope = data.GetSteepness(nx, nz);
             if (slope > maxSlopeDegrees) { rejSlope++; continue; }
