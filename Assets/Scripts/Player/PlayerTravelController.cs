@@ -48,6 +48,8 @@ public class PlayerTravelController : MonoBehaviour
     [SerializeField] private GameObject companionPrefab;
     [SerializeField] private float companionFollowStartDelay = 0.55f;
     
+    [SerializeField] private GrassDisplacementGlobals grassDisplacementGlobals;
+    
     private readonly List<PlayerMotor> companions = new();
     private readonly List<int> companionSpaceIndices = new();
     
@@ -83,6 +85,9 @@ public class PlayerTravelController : MonoBehaviour
         if (!resourceHUD) resourceHUD = FindFirstObjectByType<ResourceHUDController>();
         if (!inventoryUI) inventoryUI = FindFirstObjectByType<InventoryUIController>();
         if (!townUI) townUI = FindFirstObjectByType<TownUIController>();
+        
+        if (!grassDisplacementGlobals)
+            grassDisplacementGlobals = FindFirstObjectByType<GrassDisplacementGlobals>();
 
         if (!cameraFocus)
         {
@@ -335,6 +340,9 @@ public class PlayerTravelController : MonoBehaviour
 
         diceA.OnRolled += OnDiceRolledA;
         diceB.OnRolled += OnDiceRolledB;
+        
+        if (grassDisplacementGlobals != null)
+            grassDisplacementGlobals.SetDice(diceA.transform, diceB.transform);
     }
 
     private void CleanupDice()
@@ -344,6 +352,9 @@ public class PlayerTravelController : MonoBehaviour
 
         diceA = null;
         diceB = null;
+        
+        if (grassDisplacementGlobals != null)
+            grassDisplacementGlobals.ClearDice();
     }
 
     private void EnsurePlayerExists()

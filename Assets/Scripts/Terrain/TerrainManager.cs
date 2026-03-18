@@ -190,7 +190,7 @@ public class TerrainManager : MonoBehaviour
                 grass *= (1f - road);          
 
                 
-                if (road > 0.15f) grass = 0f;
+                if (road > 0.10f) grass = 0f;
 
                 return grass;
             },

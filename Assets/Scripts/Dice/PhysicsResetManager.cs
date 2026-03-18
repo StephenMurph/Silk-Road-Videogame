@@ -6,7 +6,7 @@ public class PhysicsResetManager : MonoBehaviour
 {
     [Header("What to record")]
     public List<Rigidbody> targets = new();
-    public bool autoFindIfTargetsEmpty = true;
+    public bool autoFindIfTargetsEmpty = false;
 
     private struct Snapshot
     {

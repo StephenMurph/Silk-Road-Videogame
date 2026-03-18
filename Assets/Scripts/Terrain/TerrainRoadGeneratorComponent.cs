@@ -15,8 +15,8 @@ public class TerrainRoadGeneratorComponent : MonoBehaviour
 
     [Header("Road Width")]
     [SerializeField] private float grassRoadHalfWidthWorld = 7f;
-    [SerializeField] private float desertTrailHalfWidthWorld = 3.5f;
-    [SerializeField] private float paintStrength = 0.9f;
+    [SerializeField] private float desertTrailHalfWidthWorld = 5f;
+    [SerializeField] private float paintStrength = 1f;
     [SerializeField, Range(0f, 1f)] private float desertCutoff = 0.35f;
 
     [Header("Pathfinding")]
@@ -797,17 +797,17 @@ public static class TerrainRoadGenerator
                 if (dist > halfWidthWorld)
                     continue;
 
-                float t = 1f - (dist / Mathf.Max(0.0001f, halfWidthWorld));
-                t = t * t * (3f - 2f * t);
-                float w = t * paintStrength;
-
-                maps[z, x, targetLayer] = Mathf.Max(maps[z, x, targetLayer], w);
-
-                if (roadMask01 != null)
+                if (dist <= halfWidthWorld)
                 {
-                    float cur = roadMask01.GetPixel(x, z).r;
-                    if (w > cur)
-                        roadMask01.SetPixel(x, z, new Color(w, 0f, 0f, 1f));
+                    // wipe all layers
+                    for (int l = 0; l < layers; l++)
+                        maps[z, x, l] = 0f;
+
+                    // set ONLY road layer
+                    maps[z, x, targetLayer] = 1f;
+
+                    if (roadMask01 != null)
+                        roadMask01.SetPixel(x, z, new Color(1f, 0f, 0f, 1f));
                 }
             }
         }

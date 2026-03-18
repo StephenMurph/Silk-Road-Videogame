@@ -33,6 +33,9 @@ public class TownManager : MonoBehaviour
     [Header("Biome / Market")]
     [Range(0f, 1f)] public float desertCutoff = 0.35f;
     
+    [Header("Biome Rules")]
+    [Range(0f, 0.5f)] public float biomeEdgeBuffer = 0.08f;
+    
     [Header("Town Photos")]
     public List<TownPhotoEntry> townPhotos = new();
     
@@ -190,6 +193,11 @@ public class TownManager : MonoBehaviour
         {
             float m = terrainManager.SendMessageMountainMask(nx, nz);
             if (m >= mountainBlockCutoff) return false;
+            
+            float desert = terrainManager.SendMessageDesertMask(nx, nz);
+            
+            if (Mathf.Abs(desert - desertCutoff) < biomeEdgeBuffer)
+                return false;
 
             float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
             if (h01 <= terrainManager.seaLevel01 + seaBuffer01) return false;

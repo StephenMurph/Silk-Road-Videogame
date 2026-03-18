@@ -92,7 +92,7 @@ public static class TerrainTreeSpawner
             if (h01 < minHeight01 || h01 > maxHeight01) { rejHeight++; continue; }
             
             float road = TerrainRoadGenerator.SampleRoadMask01(data, nx, nz);
-            if (road > 0.25f) { /* reject */ continue; } 
+            if (road > 0.16f) { /* reject */ continue; } 
             
             
             
