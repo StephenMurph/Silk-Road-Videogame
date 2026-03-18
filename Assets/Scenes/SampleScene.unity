@@ -194532,6 +194532,58 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5c33cada30175f641a17190337ce3fae, type: 3}
+--- !u!1 &2084750149
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2084750151}
+  - component: {fileID: 2084750150}
+  m_Layer: 0
+  m_Name: GameAudioManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2084750150
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2084750149}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2fd7ebaac7a4d3c8fda9aa098d7e5c0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameAudioManager
+  musicSourceA: {fileID: 0}
+  musicSourceB: {fileID: 0}
+  grasslandTravelMusic: {fileID: 8300000, guid: d6012db5baaa40b4581d6cf259f7120f, type: 3}
+  desertTravelMusic: {fileID: 8300000, guid: 1477cbc47409662418037a005f2d0357, type: 3}
+  grasslandTownMusic: {fileID: 8300000, guid: 69399906ae8e7fc42b490a567233384c, type: 3}
+  desertTownMusic: {fileID: 8300000, guid: d6012db5baaa40b4581d6cf259f7120f, type: 3}
+  musicVolume: 0.7
+  crossfadeDuration: 1.5
+--- !u!4 &2084750151
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2084750149}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 499.6441, y: 56.66392, z: 513.94666}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &2087357425
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -199111,3 +199163,4 @@ SceneRoots:
   - {fileID: 462156817}
   - {fileID: 528321610}
   - {fileID: 2141128615}
+  - {fileID: 2084750151}

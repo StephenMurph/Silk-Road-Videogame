@@ -38,6 +38,33 @@ public class DiceController : MonoBehaviour
     [SerializeField] private ParticleSystem sandImpactPrefab;
     [SerializeField] private float minSandImpactSpeed = 2.5f;
     [SerializeField] private float sandSpawnYOffset = 0.05f;
+    
+    [Header("Audio")]
+    [SerializeField] private AudioSource throwSource;
+    [SerializeField] private AudioSource rollingSource;
+
+    [SerializeField] private AudioClip throwClip;
+    [SerializeField] private AudioClip rollingLoopClip;
+
+    [SerializeField] private float throwVolume = 1.5f;
+    [SerializeField] private float rollingVolume = 1.5f;
+
+    [SerializeField] private float rollingStartSpeed = 0.8f;
+    
+    [SerializeField] private AudioSource impactSource;
+
+    [SerializeField] private AudioClip grasslandGroundHitClip;
+    [SerializeField] private AudioClip playerHitClip;
+    [SerializeField] private AudioClip treeHitClip;
+
+    [SerializeField] private float grasslandGroundHitVolume = 1.2f;
+    [SerializeField] private float playerHitVolume = 1.2f;
+    [SerializeField] private float treeHitVolume = 1.2f;
+
+    [SerializeField] private float minImpactSoundSpeed = 1.5f;
+    [SerializeField] private float impactSoundCooldown = 0.06f;
+    
+    private float lastImpactSoundTime = -999f;
 
     private Terrain terrain;
     private TerrainManager terrainManager;
@@ -71,6 +98,30 @@ public class DiceController : MonoBehaviour
 
         if (!rb) rb = GetComponent<Rigidbody>();
         if (!diceColider) diceColider = GetComponent<BoxCollider>();
+        
+        if (!throwSource)
+            throwSource = gameObject.AddComponent<AudioSource>();
+
+        if (!rollingSource)
+            rollingSource = gameObject.AddComponent<AudioSource>();
+
+        throwSource.playOnAwake = false;
+        throwSource.loop = false;
+        throwSource.spatialBlend = 0f;
+        throwSource.volume = 1f;
+
+        rollingSource.playOnAwake = false;
+        rollingSource.loop = false;
+        rollingSource.spatialBlend = 0f;
+        rollingSource.volume = 1f;
+        
+        if (!impactSource)
+            impactSource = gameObject.AddComponent<AudioSource>();
+
+        impactSource.playOnAwake = false;
+        impactSource.loop = false;
+        impactSource.spatialBlend = 0f;
+        impactSource.volume = 1f;
 
         CacheFaces();
     }
@@ -84,11 +135,18 @@ public class DiceController : MonoBehaviour
     {
         if (showingResult)
         {
+            StopRollingLoop();
             FollowCameraWhileShowingResult();
             return;
         }
 
-        if (revealing || settled) return;
+        if (revealing || settled)
+        {
+            StopRollingLoop();
+            return;
+        }
+
+        UpdateRollingAudio();
 
         if (!thrown)
         {
@@ -110,6 +168,7 @@ public class DiceController : MonoBehaviour
         showingResult = false;
         shownResult = -1;
         stillTimer = 0f;
+        StopRollingLoop();
 
         if (rb)
         {
@@ -172,6 +231,8 @@ public class DiceController : MonoBehaviour
 
         thrown = true;
         stillTimer = 0f;
+        
+        StopRollingLoop();
 
         if (diceColider)
         {
@@ -184,6 +245,8 @@ public class DiceController : MonoBehaviour
         Vector3 vel = cam.transform.forward * throwForward + Vector3.up * throwUp;
         rb.linearVelocity = vel;
         rb.angularVelocity = Random.onUnitSphere * torque;
+
+        PlayThrowSound();
     }
 
     void CheckSettled()
@@ -213,6 +276,8 @@ public class DiceController : MonoBehaviour
         thrown = false;
         settled = true;
         stillTimer = 0f;
+        
+        StopRollingLoop();
 
         if (rb)
         {
@@ -349,6 +414,7 @@ public class DiceController : MonoBehaviour
     private void OnCollisionEnter(Collision collision)
     {
         TrySpawnSandImpact(collision);
+        TryPlayImpactSound(collision);
     }
 
     private void TrySpawnSandImpact(Collision collision)
@@ -377,5 +443,114 @@ public class DiceController : MonoBehaviour
         ParticleSystem ps = Instantiate(sandImpactPrefab, spawnPos, Quaternion.identity);
         ps.Play();
         Destroy(ps.gameObject, 3f);
+    }
+    
+    private void PlayThrowSound()
+    {
+        if (!throwSource || !throwClip)
+            return;
+
+        throwSource.PlayOneShot(throwClip, throwVolume);
+    }
+
+    private void StartRollingLoop()
+    {
+        if (!rollingSource || !rollingLoopClip)
+            return;
+
+        if (rollingSource.isPlaying && rollingSource.clip == rollingLoopClip)
+            return;
+
+        rollingSource.clip = rollingLoopClip;
+        rollingSource.volume = rollingVolume;
+        rollingSource.loop = true;
+        rollingSource.Play();
+    }
+    
+    private void UpdateRollingAudio()
+    {
+        if (!rollingSource || !rollingLoopClip)
+            return;
+        
+        if (!thrown && !revealing && !settled && !showingResult)
+        {
+            StartRollingLoop();
+            return;
+        }
+        
+        StopRollingLoop();
+    }
+    
+    private void StopRollingLoop()
+    {
+        if (!rollingSource)
+            return;
+
+        rollingSource.Stop();
+        rollingSource.clip = null;
+        rollingSource.loop = false;
+        rollingSource.volume = 0f;
+    }
+
+    private void TryPlayImpactSound(Collision collision)
+    {
+        if (!impactSource)
+            return;
+
+        if (Time.time - lastImpactSoundTime < impactSoundCooldown)
+            return;
+
+        float impactSpeed = collision.relativeVelocity.magnitude;
+        if (impactSpeed < minImpactSoundSpeed)
+            return;
+
+        GameObject other = collision.gameObject;
+        if (!other)
+            return;
+
+        // Player / companions
+        if (other.CompareTag("Player"))
+        {
+            PlayImpactClip(playerHitClip, playerHitVolume);
+            return;
+        }
+
+        // Tree
+        if (other.CompareTag("Tree"))
+        {
+            PlayImpactClip(treeHitClip, treeHitVolume);
+            return;
+        }
+
+        // Terrain / grassland ground
+        if (terrain != null && terrainManager != null && collision.contactCount > 0)
+        {
+            ContactPoint contact = collision.GetContact(0);
+            Vector3 p = contact.point;
+
+            float nx = (p.x - terrain.transform.position.x) / terrain.terrainData.size.x;
+            float nz = (p.z - terrain.transform.position.z) / terrain.terrainData.size.z;
+
+            if (nx >= 0f && nx <= 1f && nz >= 0f && nz <= 1f)
+            {
+                float desert = terrainManager.SendMessageDesertMask(nx, nz);
+
+                // Only grassland for now
+                if (desert < 0.35f)
+                {
+                    PlayImpactClip(grasslandGroundHitClip, grasslandGroundHitVolume);
+                    return;
+                }
+            }
+        }
+    }
+    
+    private void PlayImpactClip(AudioClip clip, float volume)
+    {
+        if (!impactSource || !clip)
+            return;
+
+        lastImpactSoundTime = Time.time;
+        impactSource.PlayOneShot(clip, volume);
     }
 }

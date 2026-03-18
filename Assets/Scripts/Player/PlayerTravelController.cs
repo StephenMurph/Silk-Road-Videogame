@@ -127,6 +127,11 @@ public class PlayerTravelController : MonoBehaviour
         {
             DebugAddPartyMember();
         }
+        
+        if (state == TravelState.Traveling)
+        {
+            RefreshMusicForCurrentContext(false);
+        }
     }
 
     void OnEnable()
@@ -554,6 +559,8 @@ public class PlayerTravelController : MonoBehaviour
         {
             townUI.ShowTown(townSystem.towns[currentTownId]);
         }
+        
+        RefreshMusicForCurrentContext(true);
 
         Debug.Log($"Entered Town Mode at town {currentTownId}. Map reopened.");
     }
@@ -577,6 +584,8 @@ public class PlayerTravelController : MonoBehaviour
         if (inventoryUI)
             inventoryUI.SetTravelUIVisible(true);
 
+        RefreshMusicForCurrentContext(false);
+        
         cameraFocus.SetParent(null);
         cameraFocus.position = player.transform.position;
 
@@ -862,5 +871,56 @@ public class PlayerTravelController : MonoBehaviour
             worldMapUI.SetCurrentTown(currentTownId, true, false);
             worldMapUI.OpenMap();
         }
+    }
+    
+    private void RefreshMusicForCurrentContext(bool inTown)
+    {
+        if (GameAudioManager.Instance == null || townSystem == null)
+            return;
+
+        if (inTown)
+        {
+            if (currentTownId < 0 || currentTownId >= townSystem.towns.Count)
+                return;
+
+            var town = townSystem.towns[currentTownId];
+            bool isDesertTown = town.biomeType == TownManager.TownBiomeType.Desert;
+
+            GameAudioManager.Instance.PlayMusic(
+                isDesertTown
+                    ? GameAudioManager.MusicState.DesertTown
+                    : GameAudioManager.MusicState.GrasslandTown
+            );
+
+            return;
+        }
+
+        if (terrain == null)
+            return;
+
+        Vector3 samplePos;
+
+        if (player != null)
+            samplePos = player.transform.position;
+        else if (activeSpaces != null && activeSpaces.Count > 0)
+            samplePos = activeSpaces[Mathf.Clamp(currentSpaceIndex, 0, activeSpaces.Count - 1)];
+        else
+            samplePos = TownWorld(currentTownId);
+
+        float nx = (samplePos.x - terrain.transform.position.x) / terrain.terrainData.size.x;
+        float nz = (samplePos.z - terrain.transform.position.z) / terrain.terrainData.size.z;
+
+        nx = Mathf.Clamp01(nx);
+        nz = Mathf.Clamp01(nz);
+
+        float desert = 0f;
+        if (townSystem.terrainManager != null)
+            desert = townSystem.terrainManager.SendMessageDesertMask(nx, nz);
+
+        GameAudioManager.Instance.PlayMusic(
+            desert >= 0.35f
+                ? GameAudioManager.MusicState.DesertTravel
+                : GameAudioManager.MusicState.GrasslandTravel
+        );
     }
 }
