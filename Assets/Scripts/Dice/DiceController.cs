@@ -33,6 +33,14 @@ public class DiceController : MonoBehaviour
     public float revealMoveDuration = 0.35f;
     public float revealHoldDuration = 0.45f;
     public float revealFollowSharpness = 14f;
+    
+    [Header("Impact Particles")]
+    [SerializeField] private ParticleSystem sandImpactPrefab;
+    [SerializeField] private float minSandImpactSpeed = 2.5f;
+    [SerializeField] private float sandSpawnYOffset = 0.05f;
+
+    private Terrain terrain;
+    private TerrainManager terrainManager;
 
     public Action<int> OnRolled;
 
@@ -48,6 +56,9 @@ public class DiceController : MonoBehaviour
 
     void Awake()
     {
+        terrain = FindFirstObjectByType<Terrain>();
+        terrainManager = FindFirstObjectByType<TerrainManager>();
+        
         if (!cam)
         {
             cam = Camera.main;
@@ -333,5 +344,38 @@ public class DiceController : MonoBehaviour
         }
 
         return result;
+    }
+    
+    private void OnCollisionEnter(Collision collision)
+    {
+        TrySpawnSandImpact(collision);
+    }
+
+    private void TrySpawnSandImpact(Collision collision)
+    {
+        if (!sandImpactPrefab || !terrain || !terrainManager || collision.contactCount == 0)
+            return;
+
+        float impactSpeed = collision.relativeVelocity.magnitude;
+        if (impactSpeed < minSandImpactSpeed)
+            return;
+
+        ContactPoint contact = collision.GetContact(0);
+        Vector3 p = contact.point;
+
+        float nx = (p.x - terrain.transform.position.x) / terrain.terrainData.size.x;
+        float nz = (p.z - terrain.transform.position.z) / terrain.terrainData.size.z;
+
+        if (nx < 0f || nx > 1f || nz < 0f || nz > 1f)
+            return;
+
+        float desert = terrainManager.SendMessageDesertMask(nx, nz);
+        if (desert < 0.35f)
+            return;
+
+        Vector3 spawnPos = p + Vector3.up * sandSpawnYOffset;
+        ParticleSystem ps = Instantiate(sandImpactPrefab, spawnPos, Quaternion.identity);
+        ps.Play();
+        Destroy(ps.gameObject, 3f);
     }
 }

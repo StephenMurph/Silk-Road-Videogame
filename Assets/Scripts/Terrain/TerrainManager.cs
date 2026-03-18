@@ -216,7 +216,7 @@ public class TerrainManager : MonoBehaviour
             maxHeight01: treeMaxHeight01,
             scaleRange: treeScaleRange,
             minSpacingWorld: treeMinSpacingWorld,
-            clearExistingTrees: false,
+            clearExistingTrees: true,
             blockedCutoff: 0.5f,
             seaLevel01: seaLevel01,
             seaBuffer01: 0.01f

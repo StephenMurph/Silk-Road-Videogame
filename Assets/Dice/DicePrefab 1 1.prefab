@@ -375,7 +375,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 38bb9ba6e66049618fdab33a67facd34, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DiceController
-  resetManager: {fileID: 0}
   cam: {fileID: 0}
   rb: {fileID: 0}
   cameraOffset: {x: -0.4, y: -0.25, z: 6}
@@ -388,6 +387,13 @@ MonoBehaviour:
   settleVelocity: 0.1
   settleAngular: 0.2
   settleTime: 0.6
+  revealMoveDuration: 0.35
+  revealHoldDuration: 0.45
+  revealFollowSharpness: 14
+  sandImpactPrefab: {fileID: 3915645871968690074, guid: 279bdcf24206da448bd35b09b1ae4b18, type: 3}
+  minSandImpactSpeed: 2.5
+  sandSpawnYOffset: 0.05
+  diceColider: {fileID: 0}
 --- !u!4 &3171775505450391527 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0bef2aed135da674796fbbe8dcfac6ba, type: 3}
