@@ -9,6 +9,7 @@ public class PlayerTravelController : MonoBehaviour
     private enum TravelState
     {
         Town,
+        EventPopup,
         Dice,
         Recovering,
         Traveling
@@ -20,6 +21,7 @@ public class PlayerTravelController : MonoBehaviour
     [SerializeField] private TerrainRoadGeneratorComponent roadGenerator;
     [SerializeField] private WorldMapUI worldMapUI;
     [SerializeField] private CameraFollowPlayer cameraFollow;
+    [SerializeField] private TravelEventManager travelEventManager;
 
     [Header("Player")]
     [SerializeField] private GameObject playerPrefab;
@@ -88,6 +90,9 @@ public class PlayerTravelController : MonoBehaviour
         
         if (!grassDisplacementGlobals)
             grassDisplacementGlobals = FindFirstObjectByType<GrassDisplacementGlobals>();
+        
+        if (!travelEventManager)
+            travelEventManager = FindFirstObjectByType<TravelEventManager>();
 
         if (!cameraFocus)
         {
@@ -193,9 +198,20 @@ public class PlayerTravelController : MonoBehaviour
             var reset = FindFirstObjectByType<PhysicsResetManager>();
             reset?.Capture();
 
-            yield return WaitForDicePair();
+            int total;
+            bool usedRainPenaltyThisRoll = false;
 
-            int total = diceAValue + diceBValue;
+            if (travelEventManager != null && travelEventManager.RainPenaltyActive)
+            {
+                yield return WaitForSingleDie();
+                total = diceAValue;
+                usedRainPenaltyThisRoll = true;
+            }
+            else
+            {
+                yield return WaitForDicePair();
+                total = diceAValue + diceBValue;
+            }
 
             CleanupDice();
 
@@ -281,6 +297,37 @@ public class PlayerTravelController : MonoBehaviour
             while (pendingMoves > 0)
                 yield return null;
 
+            if (usedRainPenaltyThisRoll && travelEventManager != null)
+            {
+                travelEventManager.ConsumeTravelRoll();
+
+                if (travelEventManager.EventPopupShowing)
+                {
+                    state = TravelState.EventPopup;
+
+                    while (travelEventManager.EventPopupShowing)
+                        yield return null;
+                }
+            }
+
+            if (travelEventManager != null && terrain != null && townSystem != null && townSystem.terrainManager != null)
+            {
+                bool triggeredEvent = travelEventManager.TryTriggerRandomEventAtPosition(
+                    terrain,
+                    townSystem.terrainManager,
+                    player.transform.position,
+                    this
+                );
+
+                if (triggeredEvent)
+                {
+                    state = TravelState.EventPopup;
+
+                    while (travelEventManager.EventPopupShowing)
+                        yield return null;
+                }
+            }
+
             ResolvePostTravelSupplies();
 
             if (currentSpaceIndex >= activeSpaces.Count - 1)
@@ -325,10 +372,33 @@ public class PlayerTravelController : MonoBehaviour
 
     private void SpawnDicePair()
     {
+        bool singleDieMode = travelEventManager != null && travelEventManager.RainPenaltyActive;
+
         diceA = Instantiate(dicePrefab).GetComponent<DiceController>();
+        if (!diceA)
+        {
+            Debug.LogError("Dice prefab missing DiceController.");
+            return;
+        }
+
+        if (singleDieMode)
+        {
+            diceB = null;
+
+            diceA.cameraOffset = new Vector3(0f, -0.25f, 10f);
+            diceA.spinAxis = new Vector3(0.35f, 1f, 0.2f);
+            diceA.transform.rotation = UnityEngine.Random.rotation;
+            diceA.OnRolled += OnDiceRolledA;
+
+            if (grassDisplacementGlobals != null)
+                grassDisplacementGlobals.SetDice(diceA.transform, null);
+
+            return;
+        }
+
         diceB = Instantiate(dicePrefab).GetComponent<DiceController>();
 
-        if (!diceA || !diceB)
+        if (!diceB)
         {
             Debug.LogError("Dice prefab missing DiceController.");
             return;
@@ -345,7 +415,7 @@ public class PlayerTravelController : MonoBehaviour
 
         diceA.OnRolled += OnDiceRolledA;
         diceB.OnRolled += OnDiceRolledB;
-        
+
         if (grassDisplacementGlobals != null)
             grassDisplacementGlobals.SetDice(diceA.transform, diceB.transform);
     }
@@ -357,7 +427,7 @@ public class PlayerTravelController : MonoBehaviour
 
         diceA = null;
         diceB = null;
-        
+
         if (grassDisplacementGlobals != null)
             grassDisplacementGlobals.ClearDice();
     }
@@ -561,6 +631,7 @@ public class PlayerTravelController : MonoBehaviour
         }
         
         RefreshMusicForCurrentContext(true);
+        RefreshRainFollowTarget();
 
         Debug.Log($"Entered Town Mode at town {currentTownId}. Map reopened.");
     }
@@ -590,6 +661,7 @@ public class PlayerTravelController : MonoBehaviour
         cameraFocus.position = player.transform.position;
 
         cameraFollow.SetTarget(player.transform, snap);
+        RefreshRainFollowTarget();
     }
 
     private void OnDrawGizmosSelected()
@@ -922,5 +994,80 @@ public class PlayerTravelController : MonoBehaviour
                 ? GameAudioManager.MusicState.DesertTravel
                 : GameAudioManager.MusicState.GrasslandTravel
         );
+    }
+    
+    private IEnumerator BeginTravelAfterPopup()
+    {
+        EventPopupUI popup = FindFirstObjectByType<EventPopupUI>();
+        if (popup != null)
+        {
+            while (popup.IsShowing)
+                yield return null;
+        }
+
+        yield return BeginTravelFromTown();
+    }
+    
+    private IEnumerator WaitForSingleDie()
+    {
+        diceAReady = false;
+        diceBReady = false;
+
+        SpawnDicePair();
+
+        while (!diceAReady)
+            yield return null;
+    }
+    
+    private void RefreshRainFollowTarget()
+    {
+        if (travelEventManager == null)
+            return;
+
+        RainController rain = FindFirstObjectByType<RainController>();
+        if (rain == null)
+            return;
+
+        if (player != null)
+            rain.SetFollowTarget(player.transform);
+        else if (cameraFocus != null)
+            rain.SetFollowTarget(cameraFocus);
+    }
+    
+    public Vector3 GetForwardForEvent()
+    {
+        return GetForwardFromCurrentSpace();
+    }
+
+    public Vector3 GetBanditSpawnPoint(float distanceAhead, float sideOffset)
+    {
+        Vector3 origin;
+
+        if (player != null)
+            origin = player.transform.position;
+        else if (activeSpaces != null && activeSpaces.Count > 0)
+            origin = activeSpaces[Mathf.Clamp(currentSpaceIndex, 0, activeSpaces.Count - 1)];
+        else
+            origin = TownWorld(currentTownId);
+
+        Vector3 forward = GetForwardFromCurrentSpace();
+        forward.y = 0f;
+
+        if (forward.sqrMagnitude < 0.001f)
+            forward = Vector3.forward;
+
+        forward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+
+        Vector3 pos = origin + forward * distanceAhead + right * sideOffset;
+
+        if (terrain != null)
+        {
+            float y = terrain.SampleHeight(pos) + terrain.transform.position.y;
+            pos.y = y;
+        }
+
+        return pos;
     }
 }
