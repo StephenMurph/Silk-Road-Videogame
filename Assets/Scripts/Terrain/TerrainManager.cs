@@ -103,6 +103,28 @@ public class TerrainManager : MonoBehaviour
     [Header("Fixed Biome Regions")]
     public BiomeRegionRect[] regions;
 
+    [Header("Random Region Generation")]
+    public bool generateRegionsRandomly = true;
+
+    [Range(0f, 0.25f)] public float regionEdgePadding01 = 0.06f;
+
+    [Range(0.05f, 0.8f)] public float minRegionWidth01 = 0.22f;
+    [Range(0.05f, 0.8f)] public float maxRegionWidth01 = 0.42f;
+    [Range(0.05f, 0.8f)] public float minRegionHeight01 = 0.22f;
+    [Range(0.05f, 0.8f)] public float maxRegionHeight01 = 0.42f;
+
+    [Range(0.05f, 0.4f)] public float minMountainRegionWidth01 = 0.10f;
+    [Range(0.05f, 0.4f)] public float maxMountainRegionWidth01 = 0.18f;
+    [Range(0.05f, 0.4f)] public float minMountainRegionHeight01 = 0.10f;
+    [Range(0.05f, 0.4f)] public float maxMountainRegionHeight01 = 0.18f;
+
+    [Range(0f, 0.5f)] public float minRegionBlend01 = 0.08f;
+    [Range(0f, 0.5f)] public float maxRegionBlend01 = 0.18f;
+    
+    [Range(4, 12)] public int biomeSplitBands = 7;
+    [Range(0.02f, 0.25f)] public float biomeSplitJitter01 = 0.08f;
+    [Range(0.35f, 0.65f)] public float biomeSplitCenter01 = 0.5f;
+
     [Header("Biome Texture Layers")]
     public TerrainLayer grassLayer;
     public TerrainLayer desertLayer;
@@ -137,6 +159,9 @@ public class TerrainManager : MonoBehaviour
             Debug.LogError("TerrainHeightGenerator: No Terrain assigned/found.");
             return;
         }
+        
+        if (generateRegionsRandomly)
+            GenerateRandomRegions();
 
         TerrainData data = terrain.terrainData;
 
@@ -236,7 +261,7 @@ public class TerrainManager : MonoBehaviour
             maxHeight01: cactusMaxHeight01,
             scaleRange: cactusScaleRange,
             minSpacingWorld: cactusMinSpacingWorld,
-            clearExistingCactuses: false,
+            clearExistingCactuses: true,
             blockedCutoff: 0.5f,
             seaLevel01: seaLevel01,
             seaBuffer01: 0.01f
@@ -255,6 +280,239 @@ public class TerrainManager : MonoBehaviour
         min01 = Mathf.Clamp01(min01);
         max01 = Mathf.Clamp01(max01);
         if (max01 < min01) (min01, max01) = (max01, min01);
+    }
+    private void GenerateRandomRegions()
+    {
+        System.Random prng = new System.Random(seed ^ 0x51A7);
+
+        bool verticalSplit = prng.NextDouble() < 0.5; // true = left/right, false = top/bottom
+        int bands = Mathf.Max(4, biomeSplitBands);
+
+        float center = Mathf.Clamp(biomeSplitCenter01, 0.35f, 0.65f);
+        float jitter = Mathf.Clamp01(biomeSplitJitter01);
+
+        var generated = new System.Collections.Generic.List<BiomeRegionRect>(bands * 2 + 1);
+
+        for (int i = 0; i < bands; i++)
+        {
+            float t0 = i / (float)bands;
+            float t1 = (i + 1) / (float)bands;
+
+            float split = center + RandomRange(prng, -jitter, jitter);
+            split = Mathf.Clamp(split, 0.2f, 0.8f);
+
+            float blend = RandomRange(prng, minRegionBlend01, maxRegionBlend01);
+
+            BiomeRegionRect grassRect;
+            BiomeRegionRect desertRect;
+
+            if (verticalSplit)
+            {
+                grassRect = new BiomeRegionRect
+                {
+                    biome = BiomeType.Grassland,
+                    normalizedRect = Rect.MinMaxRect(
+                        0f,
+                        t0,
+                        split,
+                        t1
+                    ),
+                    blend = blend
+                };
+
+                desertRect = new BiomeRegionRect
+                {
+                    biome = BiomeType.Desert,
+                    normalizedRect = Rect.MinMaxRect(
+                        split,
+                        t0,
+                        1f,
+                        t1
+                    ),
+                    blend = blend
+                };
+            }
+            else
+            {
+                grassRect = new BiomeRegionRect
+                {
+                    biome = BiomeType.Grassland,
+                    normalizedRect = Rect.MinMaxRect(
+                        t0,
+                        0f,
+                        t1,
+                        split
+                    ),
+                    blend = blend
+                };
+
+                desertRect = new BiomeRegionRect
+                {
+                    biome = BiomeType.Desert,
+                    normalizedRect = Rect.MinMaxRect(
+                        t0,
+                        split,
+                        t1,
+                        1f
+                    ),
+                    blend = blend
+                };
+            }
+
+            // Alternate insertion order to avoid systematic border bias
+            if ((i & 1) == 0)
+            {
+                generated.Add(grassRect);
+                generated.Add(desertRect);
+            }
+            else
+            {
+                generated.Add(desertRect);
+                generated.Add(grassRect);
+            }
+        }
+
+        Vector2 mountainCenter;
+        if (verticalSplit)
+        {
+            mountainCenter = new Vector2(
+                RandomRange(prng, center - 0.16f, center - 0.05f),
+                RandomRange(prng, 0.25f, 0.75f)
+            );
+        }
+        else
+        {
+            mountainCenter = new Vector2(
+                RandomRange(prng, 0.25f, 0.75f),
+                RandomRange(prng, center - 0.16f, center - 0.05f)
+            );
+        }
+
+        BiomeRegionRect mainMountain = MakeRegion(
+            prng,
+            BiomeType.Mountain,
+            mountainCenter,
+            minMountainRegionWidth01,
+            maxMountainRegionWidth01,
+            minMountainRegionHeight01,
+            maxMountainRegionHeight01
+        );
+
+        generated.Add(mainMountain);
+
+// Add a few smaller offset chunks to break up the rectangle silhouette
+        int extraMountainChunks = 2 + prng.Next(0, 2); // 2 or 3
+
+        for (int i = 0; i < extraMountainChunks; i++)
+        {
+            Vector2 dir = RandomInsideUnitCircle(prng);
+            if (dir.sqrMagnitude < 0.0001f)
+                dir = Vector2.right;
+
+            dir.Normalize();
+
+            float offsetX = dir.x * RandomRange(prng, 0.03f, 0.09f);
+            float offsetY = dir.y * RandomRange(prng, 0.03f, 0.09f);
+
+            Vector2 chunkCenter = new Vector2(
+                Mathf.Clamp01(mountainCenter.x + offsetX),
+                Mathf.Clamp01(mountainCenter.y + offsetY)
+            );
+
+            generated.Add(MakeRegion(
+                prng,
+                BiomeType.Mountain,
+                chunkCenter,
+                minMountainRegionWidth01 * 0.45f,
+                maxMountainRegionWidth01 * 0.75f,
+                minMountainRegionHeight01 * 0.45f,
+                maxMountainRegionHeight01 * 0.75f
+            ));
+        }
+
+        regions = generated.ToArray();
+    }
+    
+    private BiomeRegionRect MakeOffsetRegion(
+        System.Random prng,
+        BiomeType biome,
+        Vector2 baseCenter,
+        float offsetScale,
+        float minWidth,
+        float maxWidth,
+        float minHeight,
+        float maxHeight)
+    {
+        Vector2 dir = RandomInsideUnitCircle(prng).normalized;
+        if (dir.sqrMagnitude < 0.0001f)
+            dir = Vector2.right;
+
+        float width = RandomRange(prng, minWidth, maxWidth) * RandomRange(prng, 0.55f, 0.8f);
+        float height = RandomRange(prng, minHeight, maxHeight) * RandomRange(prng, 0.55f, 0.8f);
+
+        float offsetX = dir.x * width * offsetScale;
+        float offsetY = dir.y * height * offsetScale;
+
+        Vector2 center = new Vector2(baseCenter.x + offsetX, baseCenter.y + offsetY);
+        center.x = Mathf.Clamp01(center.x);
+        center.y = Mathf.Clamp01(center.y);
+
+        float blend = RandomRange(prng, minRegionBlend01, maxRegionBlend01);
+
+        float pad = Mathf.Clamp01(regionEdgePadding01);
+
+        float xMin = Mathf.Clamp(center.x - width * 0.5f, pad, 1f - pad);
+        float yMin = Mathf.Clamp(center.y - height * 0.5f, pad, 1f - pad);
+        float xMax = Mathf.Clamp(center.x + width * 0.5f, pad, 1f - pad);
+        float yMax = Mathf.Clamp(center.y + height * 0.5f, pad, 1f - pad);
+
+        return new BiomeRegionRect
+        {
+            biome = biome,
+            normalizedRect = Rect.MinMaxRect(xMin, yMin, xMax, yMax),
+            blend = blend
+        };
+    }
+
+    private static Vector2 RandomInsideUnitCircle(System.Random prng)
+    {
+        float a = RandomRange(prng, 0f, Mathf.PI * 2f);
+        float r = Mathf.Sqrt((float)prng.NextDouble());
+        return new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r;
+    }
+
+    private BiomeRegionRect MakeRegion(
+        System.Random prng,
+        BiomeType biome,
+        Vector2 center,
+        float minWidth,
+        float maxWidth,
+        float minHeight,
+        float maxHeight)
+    {
+        float width = RandomRange(prng, minWidth, maxWidth);
+        float height = RandomRange(prng, minHeight, maxHeight);
+        float blend = RandomRange(prng, minRegionBlend01, maxRegionBlend01);
+
+        float pad = Mathf.Clamp01(regionEdgePadding01);
+
+        float xMin = Mathf.Clamp(center.x - width * 0.5f, pad, 1f - pad);
+        float yMin = Mathf.Clamp(center.y - height * 0.5f, pad, 1f - pad);
+        float xMax = Mathf.Clamp(center.x + width * 0.5f, pad, 1f - pad);
+        float yMax = Mathf.Clamp(center.y + height * 0.5f, pad, 1f - pad);
+
+        return new BiomeRegionRect
+        {
+            biome = biome,
+            normalizedRect = Rect.MinMaxRect(xMin, yMin, xMax, yMax),
+            blend = blend
+        };
+    }
+
+    private static float RandomRange(System.Random prng, float min, float max)
+    {
+        if (max < min) (min, max) = (max, min);
+        return Mathf.Lerp(min, max, (float)prng.NextDouble());
     }
     
     private float[,] GenerateHeights(int width, int height, Vector3 terrainSize)

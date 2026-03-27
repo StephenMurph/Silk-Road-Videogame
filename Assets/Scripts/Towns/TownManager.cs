@@ -24,7 +24,7 @@ public class TownManager : MonoBehaviour
     public float seaBuffer01 = 0.01f;
 
     [Tooltip("Don’t place towns in strong mountain biome.")]
-    [Range(0f, 1f)] public float mountainBlockCutoff = 0.35f;
+    [Range(0f, 1f)] public float mountainBlockCutoff = 0.5f;
     
     [Header("Debug")]
     public bool clearExistingTowns = true;
@@ -193,6 +193,9 @@ public class TownManager : MonoBehaviour
         {
             float m = terrainManager.SendMessageMountainMask(nx, nz);
             if (m >= mountainBlockCutoff) return false;
+            
+            float edge = terrainManager.SendMessageEdgeMask(nx, nz);
+            if (edge > 0.10f) return false;
             
             float desert = terrainManager.SendMessageDesertMask(nx, nz);
             
