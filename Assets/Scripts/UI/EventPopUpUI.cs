@@ -25,6 +25,7 @@ public class EventPopupUI : MonoBehaviour
     [SerializeField] private GameObject option2Root;
     [SerializeField] private Button option2Button;
     [SerializeField] private TMP_Text option2Text;
+    
 
     private Action onOkPressed;
     private Action onOption1Pressed;

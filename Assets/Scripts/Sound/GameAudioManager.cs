@@ -11,7 +11,8 @@ public class GameAudioManager : MonoBehaviour
         GrasslandTravel,
         DesertTravel,
         GrasslandTown,
-        DesertTown
+        DesertTown,
+        Battle
     }
 
     [Header("Sources")]
@@ -23,6 +24,7 @@ public class GameAudioManager : MonoBehaviour
     [SerializeField] private AudioClip desertTravelMusic;
     [SerializeField] private AudioClip grasslandTownMusic;
     [SerializeField] private AudioClip desertTownMusic;
+    [SerializeField] private AudioClip BattleMusic;
 
     [Header("Settings")]
     [SerializeField] private float musicVolume = 0.7f;
@@ -31,7 +33,7 @@ public class GameAudioManager : MonoBehaviour
     private AudioSource activeSource;
     private AudioSource inactiveSource;
     private Coroutine crossfadeRoutine;
-    private MusicState currentState = MusicState.None;
+    public MusicState CurrentState { get; private set; }
 
     private void Awake()
     {
@@ -63,11 +65,11 @@ public class GameAudioManager : MonoBehaviour
 
     public void PlayMusic(MusicState state, bool instant = false)
     {
-        if (state == currentState)
+        if (state == CurrentState)
             return;
 
         AudioClip clip = GetClipForState(state);
-        currentState = state;
+        CurrentState = state;
 
         if (clip == null)
         {
@@ -95,7 +97,7 @@ public class GameAudioManager : MonoBehaviour
 
     public void StopMusic(bool instant = false)
     {
-        currentState = MusicState.None;
+        CurrentState = MusicState.None;
 
         if (crossfadeRoutine != null)
             StopCoroutine(crossfadeRoutine);
@@ -179,6 +181,7 @@ public class GameAudioManager : MonoBehaviour
             case MusicState.DesertTravel: return desertTravelMusic;
             case MusicState.GrasslandTown: return grasslandTownMusic;
             case MusicState.DesertTown: return desertTownMusic;
+            case MusicState.Battle: return BattleMusic;
             default: return null;
         }
     }

@@ -3,28 +3,46 @@ using UnityEngine;
 
 public class BanditEventActor : MonoBehaviour
 {
-    [SerializeField] private float fallHeight = 12f;
-    [SerializeField] private float fallDuration = 0.5f;
-    [SerializeField] private float landYOffset = 0f;
+    [SerializeField] private float fallHeight = 50f;
+    [SerializeField] private float gravity = 40f;
+    [SerializeField] private float groundClearance = 0.3f;
+    [SerializeField] private float landPause = 0.1f;
 
     public IEnumerator DropFromSky(Vector3 landPosition)
     {
-        Vector3 start = landPosition + Vector3.up * fallHeight;
-        Vector3 end = landPosition + Vector3.up * landYOffset;
+        float velocity = 0f;
 
-        transform.position = start;
+        float bottomOffset = GetBottomOffsetFromPivot();
+        Vector3 targetPos = landPosition + Vector3.up * (bottomOffset + groundClearance);
+        Vector3 pos = targetPos + Vector3.up * fallHeight;
 
-        float t = 0f;
-        while (t < fallDuration)
+        while (pos.y > targetPos.y)
         {
-            t += Time.deltaTime;
-            float u = Mathf.Clamp01(t / fallDuration);
-            float eased = 1f - Mathf.Pow(1f - u, 3f);
+            velocity += gravity * Time.deltaTime;
+            pos.y -= velocity * Time.deltaTime;
 
-            transform.position = Vector3.Lerp(start, end, eased);
+            if (pos.y < targetPos.y)
+                pos.y = targetPos.y;
+
+            transform.position = pos;
             yield return null;
         }
 
-        transform.position = end;
+        transform.position = targetPos;
+        yield return new WaitForSeconds(landPause);
+    }
+
+    private float GetBottomOffsetFromPivot()
+    {
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        if (renderers == null || renderers.Length == 0)
+            return 0.5f;
+
+        Bounds combined = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            combined.Encapsulate(renderers[i].bounds);
+
+        float bottomY = combined.min.y;
+        return transform.position.y - bottomY;
     }
 }

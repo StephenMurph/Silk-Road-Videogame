@@ -349,4 +349,49 @@ public class PlayerMotor : MonoBehaviour
 
         transform.localScale = fullScale;
     }
+    
+    public void BeginHopToPosition(
+        PlayerTravelController controller,
+        Vector3 targetPos,
+        Vector3 forward,
+        float duration,
+        float height,
+        System.Action onComplete)
+    {
+        StartCoroutine(HopToPositionRoutine(controller, targetPos, forward, duration, height, onComplete));
+    }
+
+    private IEnumerator HopToPositionRoutine(
+        PlayerTravelController controller,
+        Vector3 targetPos,
+        Vector3 forward,
+        float duration,
+        float height,
+        System.Action onComplete)
+    {
+        Vector3 start = transform.position;
+        Quaternion targetRot = Quaternion.LookRotation(forward, Vector3.up);
+
+        float t = 0f;
+
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float u = Mathf.Clamp01(t / duration);
+            float s = u * u * (3f - 2f * u);
+
+            Vector3 basePos = Vector3.Lerp(start, targetPos, s);
+            float arc = Mathf.Sin(u * Mathf.PI) * height;
+
+            transform.position = basePos + Vector3.up * arc;
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, s);
+
+            yield return null;
+        }
+
+        transform.position = targetPos;
+        transform.rotation = targetRot;
+
+        onComplete?.Invoke();
+    }
 }

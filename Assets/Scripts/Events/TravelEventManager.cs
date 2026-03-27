@@ -17,6 +17,7 @@ public class TravelEventManager : MonoBehaviour
     [SerializeField] private EventPopupUI eventPopupUI;
     [SerializeField] private Sprite rainSprite;
     [SerializeField] private Sprite banditSprite;
+    [SerializeField] private Sprite moneySprite;
 
     [Header("Random Events")]
     [SerializeField, Range(0f, 1f)] private float eventChancePerMove = 0.15f;
@@ -35,6 +36,19 @@ public class TravelEventManager : MonoBehaviour
     [SerializeField] private GameObject banditPrefab;
     [SerializeField] private float banditSpawnDistanceAhead = 6f;
     [SerializeField] private float banditSideOffset = 0f;
+    [SerializeField] private float banditMinDistanceFromTown = 20f;
+    [SerializeField] private EnemyFightController enemyFightController;
+    
+    [Header("Bandit Music")]
+    [SerializeField] private GameAudioManager.MusicState banditMusicState = GameAudioManager.MusicState.Battle;
+    
+    private TravelEventType lastTriggeredEvent = TravelEventType.None;
+
+    public bool IsWeatherActive =>
+        RainTurnsRemaining > 0;
+
+    private GameAudioManager.MusicState previousMusicState;
+    private bool hasStoredMusic;
 
     public int RainTurnsRemaining { get; private set; }
     public bool RainPenaltyActive => RainTurnsRemaining > 0;
@@ -47,9 +61,15 @@ public class TravelEventManager : MonoBehaviour
     private bool visualsCached;
 
     private GameObject activeBandit;
+    
+    private bool isEventBlockingTravel;
+    public bool IsEventBlockingTravel => isEventBlockingTravel;
 
     private void Awake()
     {
+        if (!enemyFightController)
+            enemyFightController = FindFirstObjectByType<EnemyFightController>();
+        
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
@@ -104,20 +124,37 @@ public class TravelEventManager : MonoBehaviour
         float desert = terrainManager.SendMessageDesertMask(nx, nz);
         bool isGrassland = desert < 0.35f;
 
-        if (isGrassland)
+        List<TravelEventType> weightedEvents = new List<TravelEventType>();
+
+        if (isGrassland && !IsWeatherActive)
         {
-            validEvents.Add(TravelEventType.Rain);
-            validEvents.Add(TravelEventType.Bandits);
+            AddWeightedEvent(weightedEvents, TravelEventType.Rain, 3);
         }
 
-        if (validEvents.Count == 0)
+        if (!IsWeatherActive)
+        {
+            // later:
+            // if (isDesert)
+            //     AddWeightedEvent(weightedEvents, TravelEventType.Sandstorm, 3);
+        }
+
+        bool nearTown = IsNearAnyTown(worldPos, banditMinDistanceFromTown, terrain);
+
+        if (!nearTown)
+        {
+            AddWeightedEvent(weightedEvents, TravelEventType.Bandits, 3);
+        }
+
+        if (weightedEvents.Count == 0)
             return TravelEventType.None;
 
-        return validEvents[rng.Next(validEvents.Count)];
+        return weightedEvents[rng.Next(weightedEvents.Count)];
     }
 
     private void TriggerEvent(TravelEventType eventType, PlayerTravelController travelController)
     {
+        lastTriggeredEvent = eventType;
+
         switch (eventType)
         {
             case TravelEventType.Rain:
@@ -132,6 +169,8 @@ public class TravelEventManager : MonoBehaviour
 
     public void TriggerRainEvent()
     {
+        isEventBlockingTravel = true;
+
         if (!eventPopupUI)
         {
             Debug.LogError("TravelEventManager: No EventPopupUI assigned/found.");
@@ -154,6 +193,8 @@ public class TravelEventManager : MonoBehaviour
         CacheOriginalVisuals();
         ApplyRainVisuals();
 
+        isEventBlockingTravel = false;
+
         Debug.Log($"Rainfall applied. Single-die movement for {RainTurnsRemaining} turns.");
     }
 
@@ -171,6 +212,7 @@ public class TravelEventManager : MonoBehaviour
     private void ShowRainEndedPopup()
     {
         RestoreVisuals();
+        isEventBlockingTravel = true;
 
         if (!eventPopupUI)
             return;
@@ -179,7 +221,11 @@ public class TravelEventManager : MonoBehaviour
             "Rainfall",
             "The rain has stopped.",
             rainSprite,
-            "OK"
+            "OK",
+            () =>
+            {
+                isEventBlockingTravel = false;
+            }
         );
     }
 
@@ -249,6 +295,7 @@ public class TravelEventManager : MonoBehaviour
             return;
         }
 
+        isEventBlockingTravel = true;
         StartCoroutine(SpawnBanditAndShowPopup(travelController));
     }
 
@@ -273,7 +320,19 @@ public class TravelEventManager : MonoBehaviour
         if (actor == null)
             actor = activeBandit.AddComponent<BanditEventActor>();
 
+        StartBanditMusic();
+
         yield return actor.DropFromSky(spawnPos);
+        travelController.CacheCompanionPositions();
+        
+        if (travelController != null)
+        {
+            yield return travelController.EnterCombatFormation(activeBandit.transform);
+        }
+        
+        SetBanditPhysicsEnabled(activeBandit, true);
+
+        yield return new WaitForSeconds(0.5f);
 
         eventPopupUI.ShowChoiceEvent(
             "Bandits",
@@ -297,6 +356,7 @@ public class TravelEventManager : MonoBehaviour
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
             rb.isKinematic = !enabled;
+            rb.useGravity = enabled;
         }
 
         Collider[] cols = bandit.GetComponentsInChildren<Collider>(true);
@@ -305,7 +365,10 @@ public class TravelEventManager : MonoBehaviour
 
         UprightStabilizer stabilizer = bandit.GetComponent<UprightStabilizer>();
         if (stabilizer)
+        {
             stabilizer.enabled = enabled;
+            stabilizer.stabilizerWeight = enabled ? 1f : 0f;
+        }
     }
 
     private void HandleBanditGiveGold()
@@ -317,7 +380,12 @@ public class TravelEventManager : MonoBehaviour
             $"The bandits took {stolenGold} gold.",
             banditSprite,
             "OK",
-            ClearBandit
+            () =>
+            {
+                RestoreMusic();
+                ClearBandit();
+                isEventBlockingTravel = false;
+            }
         );
 
         Debug.Log($"Bandits event: give up gold selected. Stolen gold = {stolenGold}");
@@ -326,9 +394,17 @@ public class TravelEventManager : MonoBehaviour
     private void HandleBanditFight()
     {
         Debug.Log("Bandits event: Fight selected.");
-        // Later: enable combat mode here
-        // SetBanditPhysicsEnabled(activeBandit, true);
-        // Start fight minigame
+
+        if (activeBandit == null || enemyFightController == null)
+        {
+            Debug.LogError("Enemy fight could not start.");
+            isEventBlockingTravel = false;
+            RestoreMusic();
+            return;
+        }
+
+        isEventBlockingTravel = true;
+        enemyFightController.StartFight(activeBandit, "Bandit");
     }
 
     private void ClearBandit()
@@ -337,5 +413,113 @@ public class TravelEventManager : MonoBehaviour
             Destroy(activeBandit);
 
         activeBandit = null;
+    }
+    
+    private void StartBanditMusic()
+    {
+        if (GameAudioManager.Instance == null)
+            return;
+
+        if (!hasStoredMusic)
+        {
+            previousMusicState = GameAudioManager.Instance.CurrentState;
+            hasStoredMusic = true;
+        }
+
+        GameAudioManager.Instance.PlayMusic(banditMusicState);
+    }
+
+    private void RestoreMusic()
+    {
+        if (GameAudioManager.Instance == null || !hasStoredMusic)
+            return;
+
+        GameAudioManager.Instance.PlayMusic(previousMusicState);
+        hasStoredMusic = false;
+    }
+    
+    private void AddWeightedEvent(List<TravelEventType> list, TravelEventType eventType, int baseWeight)
+    {
+        int weight = baseWeight;
+        
+        if (eventType == lastTriggeredEvent)
+            weight = Mathf.Max(1, baseWeight - 2);
+
+        for (int i = 0; i < weight; i++)
+            list.Add(eventType);
+    }
+    
+    private bool IsNearAnyTown(Vector3 worldPos, float minDistance, Terrain terrain)
+    {
+        var townSystem = FindFirstObjectByType<TownManager>();
+
+        if (townSystem == null || terrain == null)
+            return false;
+
+        float minDistSq = minDistance * minDistance;
+
+        foreach (var town in townSystem.towns)
+        {
+            Vector3 townPos;
+
+            if (town.go != null)
+            {
+                townPos = town.go.transform.position;
+            }
+            else
+            {
+                var data = terrain.terrainData;
+                float x = town.nz.x * data.size.x + terrain.transform.position.x;
+                float z = town.nz.y * data.size.z + terrain.transform.position.z;
+                float y = terrain.SampleHeight(new Vector3(x, 0f, z)) + terrain.transform.position.y;
+                townPos = new Vector3(x, y, z);
+            }
+
+            Vector3 a = new Vector3(worldPos.x, 0f, worldPos.z);
+            Vector3 b = new Vector3(townPos.x, 0f, townPos.z);
+
+            if ((a - b).sqrMagnitude <= minDistSq)
+                return true;
+        }
+
+        return false;
+    }
+    
+    public void SetEventBlocking(bool value)
+    {
+        isEventBlockingTravel = value;
+    }
+    
+    public void FinishActiveEnemyEvent(bool destroyEnemy = true)
+    {
+        RestoreMusic();
+
+        if (destroyEnemy)
+            ClearBandit();
+
+        SetEventBlocking(false);
+    }
+    
+    public void ShowBanditVictoryPopup(int goldReward, System.Action onClosed = null)
+    {
+        if (!eventPopupUI)
+        {
+            onClosed?.Invoke();
+            return;
+        }
+
+        isEventBlockingTravel = true;
+
+        eventPopupUI.ShowSimpleEvent(
+            "You won",
+            $"You received {goldReward} gold.",
+            moneySprite,
+            "OK",
+            () =>
+            {
+                isEventBlockingTravel = false;
+                onClosed?.Invoke();
+            }
+        );
     }
 }

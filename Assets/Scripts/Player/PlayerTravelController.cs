@@ -26,6 +26,8 @@ public class PlayerTravelController : MonoBehaviour
     [Header("Player")]
     [SerializeField] private GameObject playerPrefab;
     private PlayerMotor player;
+    private Vector3 playerCombatHomePos;
+    private Quaternion playerCombatHomeRot;
 
     [Header("Dice")]
     [SerializeField] private GameObject dicePrefab;
@@ -54,6 +56,8 @@ public class PlayerTravelController : MonoBehaviour
     
     private readonly List<PlayerMotor> companions = new();
     private readonly List<int> companionSpaceIndices = new();
+    private List<Vector3> cachedCompanionPositions = new();
+    private List<Quaternion> cachedCompanionRotations = new();
     
     private TravelState state = TravelState.Town;
 
@@ -190,6 +194,12 @@ public class PlayerTravelController : MonoBehaviour
         
         while (currentSpaceIndex < activeSpaces.Count - 1)
         {
+            if (travelEventManager != null && travelEventManager.IsEventBlockingTravel)
+            {
+                state = TravelState.EventPopup;
+                yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
+            }
+
             state = TravelState.Dice;
 
             player.EnablePhysics();
@@ -201,6 +211,11 @@ public class PlayerTravelController : MonoBehaviour
             int total;
             bool usedRainPenaltyThisRoll = false;
 
+            if (travelEventManager != null && travelEventManager.IsEventBlockingTravel)
+            {
+                yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
+            }
+            
             if (travelEventManager != null && travelEventManager.RainPenaltyActive)
             {
                 yield return WaitForSingleDie();
@@ -301,11 +316,11 @@ public class PlayerTravelController : MonoBehaviour
             {
                 travelEventManager.ConsumeTravelRoll();
 
-                if (travelEventManager.EventPopupShowing)
+                if (travelEventManager.IsEventBlockingTravel)
                 {
                     state = TravelState.EventPopup;
 
-                    while (travelEventManager.EventPopupShowing)
+                    while (travelEventManager.IsEventBlockingTravel)
                         yield return null;
                 }
             }
@@ -323,7 +338,7 @@ public class PlayerTravelController : MonoBehaviour
                 {
                     state = TravelState.EventPopup;
 
-                    while (travelEventManager.EventPopupShowing)
+                    while (travelEventManager.IsEventBlockingTravel)
                         yield return null;
                 }
             }
@@ -695,6 +710,10 @@ public class PlayerTravelController : MonoBehaviour
     
     private IEnumerator WaitForDicePair()
     {
+        // 🔥 extra safety
+        if (travelEventManager != null)
+            yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
+
         diceAReady = false;
         diceBReady = false;
 
@@ -1010,6 +1029,9 @@ public class PlayerTravelController : MonoBehaviour
     
     private IEnumerator WaitForSingleDie()
     {
+        if (travelEventManager != null)
+            yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
+
         diceAReady = false;
         diceBReady = false;
 
@@ -1069,5 +1091,153 @@ public class PlayerTravelController : MonoBehaviour
         }
 
         return pos;
+    }
+    
+    public void CachePlayerCombatHome()
+    {
+        if (player == null)
+            return;
+
+        playerCombatHomePos = player.transform.position;
+        playerCombatHomeRot = player.transform.rotation;
+    }
+    
+    public PlayerMotor Player => player;
+
+    public Vector3 PlayerHomePosition => playerCombatHomePos;
+    public Quaternion PlayerHomeRotation => playerCombatHomeRot;
+    public GameObject DicePrefab => dicePrefab;
+
+    public List<Transform> GetCombatTargets()
+    {
+        var list = new List<Transform>();
+
+        if (player != null)
+            list.Add(player.transform);
+
+        for (int i = 0; i < companions.Count; i++)
+        {
+            if (companions[i] != null && companions[i].gameObject.activeInHierarchy)
+                list.Add(companions[i].transform);
+        }
+
+        return list;
+    }
+    
+    public Vector3 GetGroundedCombatPosition(Vector3 worldPos)
+    {
+        if (!terrain)
+            return worldPos;
+
+        float y = terrain.SampleHeight(worldPos) + terrain.transform.position.y + 0.12f;
+        return new Vector3(worldPos.x, y, worldPos.z);
+    }
+    
+    public IEnumerator EnterCombatFormation(Transform enemy)
+    {
+        if (player == null || companions.Count == 0)
+            yield break;
+
+        Vector3 playerPos = player.transform.position;
+        
+        Vector3 forward = (enemy.position - playerPos);
+        forward.y = 0f;
+        forward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, forward);
+
+        List<Vector3> targetPositions = new List<Vector3>();
+        
+        targetPositions.Add(playerPos + forward * 1f - right * 4f);
+        
+        targetPositions.Add(playerPos + forward * 1f + right * 4f);
+        
+        targetPositions.Add(playerPos + forward * 7f + right * 6f);
+
+        int count = Mathf.Min(companions.Count, targetPositions.Count);
+
+        int pending = count;
+
+        for (int i = 0; i < count; i++)
+        {
+            var comp = companions[i];
+            if (comp == null)
+            {
+                pending--;
+                continue;
+            }
+
+            Vector3 targetPos = targetPositions[i];
+            targetPos = GetGroundedCombatPosition(targetPos);
+
+            Vector3 toEnemy = enemy.position - comp.transform.position;
+            toEnemy.y = 0f;
+
+            if (toEnemy.sqrMagnitude < 0.001f)
+                toEnemy = forward;
+
+            toEnemy.Normalize();
+
+            comp.BeginHopToPosition(
+                this,
+                targetPos,
+                toEnemy,
+                0.4f,   
+                1.2f,  
+                () => { pending--; }
+            );
+        }
+
+        while (pending > 0)
+            yield return null;
+    }
+    
+    public void CacheCompanionPositions()
+    {
+        cachedCompanionPositions.Clear();
+        cachedCompanionRotations.Clear();
+
+        foreach (var comp in companions)
+        {
+            if (comp == null)
+            {
+                cachedCompanionPositions.Add(Vector3.zero);
+                cachedCompanionRotations.Add(Quaternion.identity);
+                continue;
+            }
+
+            cachedCompanionPositions.Add(comp.transform.position);
+            cachedCompanionRotations.Add(comp.transform.rotation);
+        }
+    }
+    
+    public IEnumerator RestoreCompanionsAfterCombat()
+    {
+        int pending = companions.Count;
+
+        for (int i = 0; i < companions.Count; i++)
+        {
+            var comp = companions[i];
+            if (comp == null)
+            {
+                pending--;
+                continue;
+            }
+
+            Vector3 targetPos = cachedCompanionPositions[i];
+            Quaternion targetRot = cachedCompanionRotations[i];
+
+            comp.BeginHopToPosition(
+                this,
+                targetPos,
+                targetRot * Vector3.forward,
+                0.35f,
+                0.8f,
+                () => { pending--; }
+            );
+        }
+
+        while (pending > 0)
+            yield return null;
     }
 }
