@@ -174,7 +174,16 @@ public class TownUIController : MonoBehaviour
         currentTown = town;
         
         int townIndex = townSystem != null ? townSystem.towns.IndexOf(town) : -1;
-        marketState?.OnTownArrival(townSystem, townIndex);
+
+        if (!GameLaunchState.SuppressTownArrivalEffects)
+            marketState?.OnTownArrival(townSystem, townIndex);
+        else
+            GameLaunchState.SuppressTownArrivalEffects = false;
+        
+        var saveManager = FindFirstObjectByType<GameSaveManager>();
+        if (saveManager != null && townIndex >= 0)
+            saveManager.AutoSaveAtTown(townIndex);
+
 
         if (townNameText != null)
             townNameText.text = string.IsNullOrWhiteSpace(town.townName) ? "Unknown Town" : town.townName;

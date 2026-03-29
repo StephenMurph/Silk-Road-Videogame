@@ -285,7 +285,7 @@ public class TerrainManager : MonoBehaviour
     {
         System.Random prng = new System.Random(seed ^ 0x51A7);
 
-        bool verticalSplit = prng.NextDouble() < 0.5; // true = left/right, false = top/bottom
+        bool verticalSplit = prng.NextDouble() < 0.5; 
         int bands = Mathf.Max(4, biomeSplitBands);
 
         float center = Mathf.Clamp(biomeSplitCenter01, 0.35f, 0.65f);
@@ -358,8 +358,7 @@ public class TerrainManager : MonoBehaviour
                     blend = blend
                 };
             }
-
-            // Alternate insertion order to avoid systematic border bias
+            
             if ((i & 1) == 0)
             {
                 generated.Add(grassRect);
@@ -399,9 +398,8 @@ public class TerrainManager : MonoBehaviour
         );
 
         generated.Add(mainMountain);
-
-// Add a few smaller offset chunks to break up the rectangle silhouette
-        int extraMountainChunks = 2 + prng.Next(0, 2); // 2 or 3
+        
+        int extraMountainChunks = 2 + prng.Next(0, 2); 
 
         for (int i = 0; i < extraMountainChunks; i++)
         {

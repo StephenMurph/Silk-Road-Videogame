@@ -558,8 +558,7 @@ public class EnemyFightController : MonoBehaviour
 
         if (all == null || all.Count == 0)
             return list;
-
-        // index 0 = player → skip
+        
         for (int i = 1; i < all.Count; i++)
         {
             if (all[i] != null)

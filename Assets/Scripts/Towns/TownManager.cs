@@ -350,8 +350,7 @@ public class TownManager : MonoBehaviour
             point = default;
             return false;
         }
-
-        // ---------- 1) choose two endpoint regions ----------
+        
         Rect leftRect = new Rect(0.05f, 0.10f, 0.20f, 0.80f);
         Rect rightRect = new Rect(0.75f, 0.10f, 0.20f, 0.80f);
 
@@ -365,8 +364,7 @@ public class TownManager : MonoBehaviour
 
         AddTown(startTown.x, startTown.y);
         AddTown(endTown.x, endTown.y);
-
-        // ---------- 2) spawn corridor towns ----------
+        
         int remaining = Mathf.Max(0, townCount - 2);
         int corridorCount = Mathf.RoundToInt(remaining * 0.6f);
         int branchCount = remaining - corridorCount;
@@ -377,14 +375,12 @@ public class TownManager : MonoBehaviour
                 AddTown(p.x, p.y);
         }
 
-        // ---------- 3) spawn branch towns ----------
         for (int i = 0; i < branchCount && towns.Count < townCount; i++)
         {
             if (TryFindBranchPoint(startTown, endTown, 0.12f, 0.24f, 700, out Vector2 p))
                 AddTown(p.x, p.y);
         }
-
-        // ---------- 4) emergency fill ----------
+        
         int safety = Mathf.Max(2000, townCount * 300);
         for (int tries = 0; tries < safety && towns.Count < townCount; tries++)
         {

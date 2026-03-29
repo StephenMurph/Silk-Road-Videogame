@@ -507,22 +507,19 @@ public class DiceController : MonoBehaviour
         GameObject other = collision.gameObject;
         if (!other)
             return;
-
-        // Player / companions
+        
         if (other.CompareTag("Player"))
         {
             PlayImpactClip(playerHitClip, playerHitVolume);
             return;
         }
-
-        // Tree
+        
         if (other.CompareTag("Tree"))
         {
             PlayImpactClip(treeHitClip, treeHitVolume);
             return;
         }
-
-        // Terrain / grassland ground
+        
         if (terrain != null && terrainManager != null && collision.contactCount > 0)
         {
             ContactPoint contact = collision.GetContact(0);
@@ -534,8 +531,7 @@ public class DiceController : MonoBehaviour
             if (nx >= 0f && nx <= 1f && nz >= 0f && nz <= 1f)
             {
                 float desert = terrainManager.SendMessageDesertMask(nx, nz);
-
-                // Only grassland for now
+                
                 if (desert < 0.35f)
                 {
                     PlayImpactClip(grasslandGroundHitClip, grasslandGroundHitVolume);
