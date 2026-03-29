@@ -9,6 +9,7 @@ public class EnemyFightController : MonoBehaviour
     [SerializeField] private EnemyHealthBarUI enemyHealthBar;
     [SerializeField] private AudioSource sfxSource;
     [SerializeField] private AudioClip swordHitClip;
+    [SerializeField] private RunState runState;
 
     [Header("Enemy Health Range")]
     [SerializeField] private int minEnemyHp = 20;
@@ -21,9 +22,6 @@ public class EnemyFightController : MonoBehaviour
     [Header("Enemy Damage Range")]
     [SerializeField] private int minEnemyDamage = 10;
     [SerializeField] private int maxEnemyDamage = 40;
-
-    [Header("Party Combat Health")]
-    [SerializeField] private int startingPartyHp = 100;
 
     [Header("Attack Motion")]
     [SerializeField] private float strikeDistanceFromTarget = 0.35f;
@@ -40,7 +38,7 @@ public class EnemyFightController : MonoBehaviour
     private int currentEnemyHp;
     private bool fightActive;
 
-    private readonly Dictionary<Transform, int> allyHp = new();
+    private readonly Dictionary<Transform, int> allyPartyIndex = new();
 
     public bool FightActive => fightActive;
     public GameObject ActiveEnemy => activeEnemy;
@@ -59,6 +57,9 @@ public class EnemyFightController : MonoBehaviour
 
         if (!sfxSource)
             sfxSource = gameObject.AddComponent<AudioSource>();
+        
+        if (!runState)
+            runState = FindFirstObjectByType<RunState>();
 
         sfxSource.playOnAwake = false;
         sfxSource.loop = false;
@@ -89,16 +90,19 @@ public class EnemyFightController : MonoBehaviour
 
     private void BuildPartyHpTable()
     {
-        allyHp.Clear();
+        allyPartyIndex.Clear();
 
         if (travelController == null)
             return;
 
         List<Transform> targets = travelController.GetCombatTargets();
+        if (targets == null)
+            return;
+
         for (int i = 0; i < targets.Count; i++)
         {
             if (targets[i] != null)
-                allyHp[targets[i]] = startingPartyHp;
+                allyPartyIndex[targets[i]] = i;
         }
     }
 
@@ -177,7 +181,17 @@ public class EnemyFightController : MonoBehaviour
             int enemyDamage = Random.Range(minEnemyDamage, maxEnemyDamage + 1);
             yield return AttackHop(activeEnemy.transform, chosenTarget);
 
-            allyHp[chosenTarget] = Mathf.Max(0, allyHp[chosenTarget] - enemyDamage);
+            if (allyPartyIndex.TryGetValue(chosenTarget, out int partyIndex) &&
+                runState != null &&
+                runState.party != null &&
+                partyIndex >= 0 &&
+                partyIndex < runState.party.members.Count)
+            {
+                var member = runState.party.members[partyIndex];
+                if (member != null)
+                    member.ApplyDamage(enemyDamage);
+            }
+
             RefreshPartyUI();
 
             if (AllAlliesDead())
@@ -333,12 +347,23 @@ public class EnemyFightController : MonoBehaviour
 
     private Transform ChooseRandomLivingAlly()
     {
+        if (runState == null || runState.party == null || runState.party.members == null)
+            return null;
+
         List<Transform> living = new List<Transform>();
 
-        foreach (var kv in allyHp)
+        foreach (var kv in allyPartyIndex)
         {
-            if (kv.Key != null && kv.Value > 0)
-                living.Add(kv.Key);
+            Transform tr = kv.Key;
+            int partyIndex = kv.Value;
+
+            if (tr == null) continue;
+            if (partyIndex < 0 || partyIndex >= runState.party.members.Count) continue;
+
+            var member = runState.party.members[partyIndex];
+            if (member == null) continue;
+            if (member.currentHealth > 0)
+                living.Add(tr);
         }
 
         if (living.Count == 0)
@@ -349,9 +374,13 @@ public class EnemyFightController : MonoBehaviour
 
     private bool AllAlliesDead()
     {
-        foreach (var kv in allyHp)
+        if (runState == null || runState.party == null || runState.party.members == null)
+            return true;
+
+        for (int i = 0; i < runState.party.members.Count; i++)
         {
-            if (kv.Key != null && kv.Value > 0)
+            var member = runState.party.members[i];
+            if (member != null && member.currentHealth > 0)
                 return false;
         }
 
@@ -528,7 +557,7 @@ public class EnemyFightController : MonoBehaviour
     
     private void RefreshPartyUI()
     {
-        if (travelController == null)
+        if (travelController == null || runState == null || runState.party == null)
             return;
 
         var partyHUD = FindFirstObjectByType<PartyHUDController>();
@@ -539,16 +568,17 @@ public class EnemyFightController : MonoBehaviour
 
         for (int i = 0; i < targets.Count; i++)
         {
-            Transform t = targets[i];
-            if (t == null) continue;
+            if (i < 0 || i >= runState.party.members.Count)
+                continue;
 
-            if (allyHp.TryGetValue(t, out int hp))
-            {
-                partyHUD.SetMemberHealth(i, hp, startingPartyHp);
-            }
+            var member = runState.party.members[i];
+            if (member == null)
+                continue;
+
+            partyHUD.SetMemberHealth(i, member.currentHealth, member.maxHealth);
         }
 
-        partyHUD.Refresh(); 
+        partyHUD.Refresh();
     }
     
     private List<Transform> GetPartyMembersOnly()

@@ -23553,7 +23553,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: -185.48296, y: 2.059805, z: -179.29526, w: -51.52279}
+  m_margin: {x: -295.39478, y: 2.059805, z: -293.22668, w: -51.52279}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -36689,13 +36689,13 @@ MonoBehaviour:
   enemyHealthBar: {fileID: 0}
   sfxSource: {fileID: 0}
   swordHitClip: {fileID: 8300000, guid: 9d4991f943d0bc2449fd93efe66a6064, type: 3}
+  runState: {fileID: 0}
   minEnemyHp: 20
   maxEnemyHp: 30
   minPlayerDamage: 1
   maxPlayerDamage: 12
   minEnemyDamage: 10
   maxEnemyDamage: 40
-  startingPartyHp: 100
   strikeDistanceFromTarget: 3
   strikeTime: 0.5
   strikeHopHeight: 1.2
@@ -44081,7 +44081,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1048581360
 RectTransform:
   m_ObjectHideFlags: 0
@@ -62670,6 +62670,7 @@ MonoBehaviour:
   runState: {fileID: 528321609}
   worldMapUI: {fileID: 445884960}
   worldMarketState: {fileID: 462156816}
+  townManager: {fileID: 0}
 --- !u!4 &1407471798
 Transform:
   m_ObjectHideFlags: 0
@@ -64214,7 +64215,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 0, y: 0, z: 0, w: 0}
+  m_margin: {x: -80.54465, y: 0, z: -63.282944, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -71253,7 +71254,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 0, y: 0, z: 0, w: 0}
+  m_margin: {x: -76.70875, y: 0, z: -74.7886, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0

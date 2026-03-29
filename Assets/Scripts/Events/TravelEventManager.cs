@@ -375,9 +375,19 @@ public class TravelEventManager : MonoBehaviour
     {
         int stolenGold = rng.Next(8, 26);
 
+        RunState runState = FindFirstObjectByType<RunState>();
+        int actualStolen = 0;
+
+        if (runState != null && runState.resources != null)
+            actualStolen = runState.resources.ConsumeGold(stolenGold);
+
+        var resourceHUD = FindFirstObjectByType<ResourceHUDController>();
+        if (resourceHUD != null)
+            resourceHUD.Refresh();
+
         eventPopupUI.ShowSimpleEvent(
             "Bandits",
-            $"The bandits took {stolenGold} gold.",
+            $"The bandits took {actualStolen} gold.",
             banditSprite,
             "OK",
             () =>
@@ -388,7 +398,7 @@ public class TravelEventManager : MonoBehaviour
             }
         );
 
-        Debug.Log($"Bandits event: give up gold selected. Stolen gold = {stolenGold}");
+        Debug.Log($"Bandits event: give up gold selected. Stolen gold = {actualStolen}");
     }
 
     private void HandleBanditFight()
