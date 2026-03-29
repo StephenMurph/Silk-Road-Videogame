@@ -56,6 +56,12 @@ public class PlayerTravelController : MonoBehaviour
     [Header("Companions")]
     [SerializeField] private GameObject companionPrefab;
     [SerializeField] private float companionFollowStartDelay = 0.55f;
+    [SerializeField] private EventPopupUI eventPopupUI;
+    [SerializeField] private Sprite skullSprite;
+    
+    [Header("Companion Departure")]
+    [SerializeField, Range(0f, 1f)] private float unpaidCompanionLeaveChancePerRoll = 0.35f;
+    [SerializeField] private Sprite companionLeftSprite;
     
     [SerializeField] private GrassDisplacementGlobals grassDisplacementGlobals;
     
@@ -96,6 +102,9 @@ public class PlayerTravelController : MonoBehaviour
         if (!resourceHUD) resourceHUD = FindFirstObjectByType<ResourceHUDController>();
         if (!inventoryUI) inventoryUI = FindFirstObjectByType<InventoryUIController>();
         if (!townUI) townUI = FindFirstObjectByType<TownUIController>();
+        
+        if (!eventPopupUI)
+            eventPopupUI = FindFirstObjectByType<EventPopupUI>(FindObjectsInactive.Include);
         
         if (!grassDisplacementGlobals)
             grassDisplacementGlobals = FindFirstObjectByType<GrassDisplacementGlobals>();
@@ -798,6 +807,14 @@ public class PlayerTravelController : MonoBehaviour
         int afterDead = runState.party.CountDeadMembers();
 
         Debug.Log($"[Starvation] Food shortage after travel roll. Applied {runState.starvationDamagePerRoll} to each party member. Total damage dealt: {totalDamage}. Dead members: {beforeDead}->{afterDead}");
+
+        partyHUD?.Refresh();
+        resourceHUD?.Refresh();
+
+        StartCoroutine(ProcessDeathsAfterDamage(
+            "You have to leave behind what they were carrying.",
+            "Your caravan leader starved to death."
+        ));
     }
 
     private void HandleDehydrationTriggered(TravelSupplyResult result)
@@ -807,11 +824,21 @@ public class PlayerTravelController : MonoBehaviour
         int afterDead = runState.party.CountDeadMembers();
 
         Debug.Log($"[Dehydration] Water shortage after travel roll. Applied {runState.dehydrationDamagePerRoll} to each party member. Total damage dealt: {totalDamage}. Dead members: {beforeDead}->{afterDead}");
+
+        partyHUD?.Refresh();
+        resourceHUD?.Refresh();
+
+        StartCoroutine(ProcessDeathsAfterDamage(
+            "You have to leave behind what they were carrying.",
+            "Your caravan leader died of dehydration."
+        ));
     }
     
     private void HandleGoldShortageTriggered(TravelSupplyResult result)
     {
-        Debug.Log($"[Wages] Gold shortage after travel roll. Required {result.requiredGold}, paid {result.consumedGold}. No penalty implemented yet.");
+        Debug.Log($"[Wages] Gold shortage after travel roll. Required {result.requiredGold}, paid {result.consumedGold}.");
+
+        StartCoroutine(ProcessCompanionDeparturesAfterGoldShortage());
     }
     
     private void DebugAddPartyMember()
@@ -1287,5 +1314,132 @@ public class PlayerTravelController : MonoBehaviour
             destinationPanel.SetActive(false);
         else if (destinationText != null)
             destinationText.gameObject.SetActive(false);
+    }
+    
+    private void TriggerLeaderDeathGameOver(string reason)
+    {
+        if (runState == null || !runState.IsLeaderDead())
+            return;
+
+        var gameOver = FindFirstObjectByType<GameOverManager>();
+        if (gameOver != null && !gameOver.IsGameOverTriggered)
+            gameOver.TriggerGameOver(reason);
+    }
+    
+    public void RemoveCompanionAtPartyIndex(int partyIndex)
+    {
+        int companionIndex = partyIndex - 1;
+
+        if (companionIndex < 0 || companionIndex >= companions.Count)
+            return;
+
+        if (companions[companionIndex] != null)
+            Destroy(companions[companionIndex].gameObject);
+
+        companions.RemoveAt(companionIndex);
+
+        if (companionIndex >= 0 && companionIndex < companionSpaceIndices.Count)
+            companionSpaceIndices.RemoveAt(companionIndex);
+
+        if (companionIndex >= 0 && companionIndex < cachedCompanionPositions.Count)
+            cachedCompanionPositions.RemoveAt(companionIndex);
+
+        if (companionIndex >= 0 && companionIndex < cachedCompanionRotations.Count)
+            cachedCompanionRotations.RemoveAt(companionIndex);
+    }
+    
+    public IEnumerator ProcessDeathsAfterDamage(string nonLeaderDeathText, string leaderDeathText)
+    {
+        if (runState == null || runState.party == null || runState.party.members == null)
+            yield break;
+
+        // Leader death always wins
+        if (runState.IsLeaderDead())
+        {
+            var gameOver = FindFirstObjectByType<GameOverManager>();
+            if (gameOver != null && !gameOver.IsGameOverTriggered)
+                gameOver.TriggerGameOver(leaderDeathText);
+
+            yield break;
+        }
+
+        // Remove dead non-leaders from back to front
+        for (int i = runState.party.members.Count - 1; i >= 1; i--)
+        {
+            var member = runState.party.members[i];
+            if (member == null || !member.IsDead())
+                continue;
+
+            string deadName = string.IsNullOrWhiteSpace(member.memberName) ? "A companion" : member.memberName;
+
+            bool acknowledged = false;
+
+            if (eventPopupUI != null)
+            {
+                eventPopupUI.ShowSimpleEvent(
+                    "Companion Lost",
+                    $"{deadName} has died.\n\n{nonLeaderDeathText}",
+                    skullSprite,
+                    "OK",
+                    () => { acknowledged = true; }
+                );
+
+                yield return new WaitUntil(() => acknowledged);
+            }
+
+            RemoveCompanionAtPartyIndex(i);
+            runState.party.TryRemoveMemberAt(i);
+
+            partyHUD?.Refresh();
+            resourceHUD?.Refresh();
+            inventoryUI?.Refresh();
+        }
+    }
+    
+    private IEnumerator ProcessCompanionDeparturesAfterGoldShortage()
+    {
+        if (runState == null || runState.party == null || runState.party.members == null)
+            yield break;
+
+        List<int> eligible = new List<int>();
+
+        for (int i = 1; i < runState.party.members.Count; i++)
+        {
+            var member = runState.party.members[i];
+            if (member != null)
+                eligible.Add(i);
+        }
+
+        if (eligible.Count == 0)
+            yield break;
+
+        if (UnityEngine.Random.value > unpaidCompanionLeaveChancePerRoll)
+            yield break;
+
+        int chosen = eligible[UnityEngine.Random.Range(0, eligible.Count)];
+        var memberToLeave = runState.party.members[chosen];
+        string leaverName = string.IsNullOrWhiteSpace(memberToLeave.memberName) ? "A companion" : memberToLeave.memberName;
+
+        bool acknowledged = false;
+
+        if (eventPopupUI != null)
+        {
+            eventPopupUI.ShowSimpleEvent(
+                "Companion Left",
+                $"{leaverName} has left the caravan after going unpaid.",
+                companionLeftSprite != null ? companionLeftSprite : skullSprite,
+                "OK",
+                () => { acknowledged = true; }
+            );
+
+            yield return new WaitUntil(() => acknowledged);
+        }
+
+        RemoveCompanionAtPartyIndex(chosen);
+        runState.party.TryRemoveMemberAt(chosen);
+
+        partyHUD?.Refresh();
+        resourceHUD?.Refresh();
+        inventoryUI?.Refresh();
     }
 }

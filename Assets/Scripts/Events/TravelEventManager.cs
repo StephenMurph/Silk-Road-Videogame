@@ -343,6 +343,13 @@ public class TravelEventManager : MonoBehaviour
             "Fight",
             HandleBanditFight
         );
+
+        RunState runState = FindFirstObjectByType<RunState>();
+        bool hasGold = runState != null && runState.resources != null && runState.resources.gold > 0;
+
+        eventPopupUI.SetOption1Interactable(hasGold);
+        eventPopupUI.SetOption2Interactable(true);
+        
     }
 
     private void SetBanditPhysicsEnabled(GameObject bandit, bool enabled)

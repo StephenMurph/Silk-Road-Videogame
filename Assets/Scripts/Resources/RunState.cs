@@ -119,12 +119,22 @@ public class RunState : MonoBehaviour
 
     public int ApplyStarvationDamageToAllMembers()
     {
+        
         return party.ApplyDamageToAllMembers(starvationDamagePerRoll);
     }
 
     public int ApplyDehydrationDamageToAllMembers()
     {
         return party.ApplyDamageToAllMembers(dehydrationDamagePerRoll);
+    }
+    
+    public bool IsLeaderDead()
+    {
+        if (party == null || party.members == null || party.members.Count == 0)
+            return true;
+
+        var leader = party.members[0];
+        return leader == null || leader.IsDead();
     }
 }
 

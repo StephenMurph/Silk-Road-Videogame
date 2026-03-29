@@ -159,4 +159,16 @@ public class EventPopupUI : MonoBehaviour
         onOption2Pressed = null;
         callback?.Invoke();
     }
+    
+    public void SetOption1Interactable(bool interactable)
+    {
+        if (option1Button != null)
+            option1Button.interactable = interactable;
+    }
+
+    public void SetOption2Interactable(bool interactable)
+    {
+        if (option2Button != null)
+            option2Button.interactable = interactable;
+    }
 }

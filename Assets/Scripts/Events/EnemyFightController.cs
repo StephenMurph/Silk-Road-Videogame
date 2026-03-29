@@ -31,6 +31,9 @@ public class EnemyFightController : MonoBehaviour
     [SerializeField] private float returnTime = 0.22f;
     [SerializeField] private float returnHopHeight = 0.7f;
     
+    [SerializeField] private EventPopupUI eventPopupUI;
+    [SerializeField] private Sprite skullSprite;
+    
     private readonly Dictionary<Transform, Vector3> combatHomePos = new();
     private readonly Dictionary<Transform, Quaternion> combatHomeRot = new();
 
@@ -60,6 +63,9 @@ public class EnemyFightController : MonoBehaviour
         
         if (!runState)
             runState = FindFirstObjectByType<RunState>();
+        
+        if (!eventPopupUI)
+            eventPopupUI = FindFirstObjectByType<EventPopupUI>(FindObjectsInactive.Include);
 
         sfxSource.playOnAwake = false;
         sfxSource.loop = false;
@@ -193,6 +199,11 @@ public class EnemyFightController : MonoBehaviour
             }
 
             RefreshPartyUI();
+
+            yield return ProcessCombatDeathsAfterHit("Your caravan leader was slain by bandits.");
+
+            if (!fightActive)
+                yield break;
 
             if (AllAlliesDead())
             {
@@ -441,6 +452,8 @@ public class EnemyFightController : MonoBehaviour
     {
         Debug.Log("Party defeated.");
         EndFight(true);
+
+        TriggerLeaderDeathGameOver("Your caravan leader was slain.");
     }
 
     private void EndFight(bool destroyEnemy)
@@ -596,6 +609,68 @@ public class EnemyFightController : MonoBehaviour
         }
 
         return list;
+    }
+    
+    private bool TriggerLeaderDeathGameOver(string reason)
+    {
+        if (runState == null || !runState.IsLeaderDead())
+            return false;
+
+        var gameOver = FindFirstObjectByType<GameOverManager>();
+        if (gameOver != null && !gameOver.IsGameOverTriggered)
+            gameOver.TriggerGameOver(reason);
+
+        return true;
+    }
+    
+    private IEnumerator ProcessCombatDeathsAfterHit(string leaderDeathText)
+    {
+        if (runState == null || runState.party == null || runState.party.members == null)
+            yield break;
+
+        if (runState.IsLeaderDead())
+        {
+            EndFight(true);
+
+            var gameOver = FindFirstObjectByType<GameOverManager>();
+            if (gameOver != null && !gameOver.IsGameOverTriggered)
+                gameOver.TriggerGameOver(leaderDeathText);
+
+            yield break;
+        }
+
+        for (int i = runState.party.members.Count - 1; i >= 1; i--)
+        {
+            var member = runState.party.members[i];
+            if (member == null || !member.IsDead())
+                continue;
+
+            string deadName = string.IsNullOrWhiteSpace(member.memberName) ? "A companion" : member.memberName;
+
+            bool acknowledged = false;
+
+            if (eventPopupUI != null)
+            {
+                eventPopupUI.ShowSimpleEvent(
+                    "Companion Lost",
+                    $"{deadName} was killed in battle. \n You will have to leave behind what they were carrying.",
+                    skullSprite,
+                    "OK",
+                    () => { acknowledged = true; }
+                );
+
+                yield return new WaitUntil(() => acknowledged);
+            }
+
+            if (travelController != null)
+                travelController.RemoveCompanionAtPartyIndex(i);
+
+            runState.party.TryRemoveMemberAt(i);
+
+            BuildPartyHpTable();
+            CacheCombatHomes();
+            RefreshPartyUI();
+        }
     }
     
 }
