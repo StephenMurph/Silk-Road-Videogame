@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using Random = UnityEngine.Random;
-
+using TMPro;
 public class WorldMapUI : MonoBehaviour
 {
     [Header("Refs")]
@@ -40,6 +40,12 @@ public class WorldMapUI : MonoBehaviour
     [Range(1, 8)] public int pathDotRadiusPixels = 2;
     [Range(1, 12)] public int pathBigDotEvery = 5;
     [Range(1, 12)] public int pathBigDotRadiusPixels = 3;
+    
+    [Header("Town Name Tooltip")]
+    public TMP_Text townNameTooltip;
+    public Vector2 tooltipOffset = new Vector2(0f, 28f);
+    
+    public TownUIController townUI;
 
     public event Action<int> CurrentTownChanged;
     public event Action<int> TownSelected;
@@ -58,6 +64,7 @@ public class WorldMapUI : MonoBehaviour
             Debug.LogError("WorldMapUI: Missing references.");
             return;
         }
+        if (!townUI) townUI = FindFirstObjectByType<TownUIController>();
         
         if (!roadGenerator) roadGenerator = FindFirstObjectByType<TerrainRoadGeneratorComponent>();
 
@@ -89,6 +96,8 @@ public class WorldMapUI : MonoBehaviour
         }
 
         CurrentTownChanged?.Invoke(currentTownId);
+        
+        HideTownTooltip();
 
         SpawnTownDots();
         RefreshSelectableDots();
@@ -431,5 +440,48 @@ public class WorldMapUI : MonoBehaviour
         }
 
         return current;
+    }
+    
+    public string GetTownName(int townId)
+    {
+        if (townSystem == null || townId < 0 || townId >= townSystem.towns.Count)
+            return "";
+
+        return townSystem.towns[townId].townName;
+    }
+
+    public void ShowTownTooltip(int townId, Vector2 anchoredPosition)
+    {
+        if (townNameTooltip == null)
+            return;
+
+        string townName = GetTownName(townId);
+        if (string.IsNullOrWhiteSpace(townName))
+            return;
+
+        townNameTooltip.gameObject.SetActive(true);
+        townNameTooltip.text = townName;
+        townNameTooltip.rectTransform.anchoredPosition = anchoredPosition + tooltipOffset;
+    }
+
+    public void HideTownTooltip()
+    {
+        if (townNameTooltip == null)
+            return;
+
+        townNameTooltip.gameObject.SetActive(false);
+    }
+    
+    public void CloseMap()
+    {
+        HideTownTooltip();
+
+        if (mapRootToClose)
+            mapRootToClose.SetActive(false);
+        else
+            transform.root.gameObject.SetActive(false);
+
+        if (townUI != null && townSystem != null && currentTownId >= 0 && currentTownId < townSystem.towns.Count)
+            townUI.ShowTown(townSystem.towns[currentTownId]);
     }
 }

@@ -55,6 +55,17 @@ public class TownUIController : MonoBehaviour
     [SerializeField] private TMP_Text sellTotalText;
     [SerializeField] private TMP_Text sellGoldAfterText;
     
+    [Header("Advice Panel")]
+    [SerializeField] private GameObject advicePanel;
+    [SerializeField] private TMP_Text adviceText;
+    [SerializeField] private Button adviceBuyButton;
+    [SerializeField] private TMP_Text adviceBuyButtonText;
+    [SerializeField] private int adviceCostGold = 50;
+    [SerializeField] private TMP_Text adviceGoldText;
+    [SerializeField] private Button adviceBackButton;
+
+    private readonly HashSet<int> purchasedAdviceTownIndices = new();
+    
     private readonly int[] selectedSellQuantities = new int[8];
     
     [System.Serializable]
@@ -1329,5 +1340,131 @@ public class TownUIController : MonoBehaviour
     public void DecreaseSellSlot5() => ChangeSellQuantity(5, -1);
     public void DecreaseSellSlot6() => ChangeSellQuantity(6, -1);
     public void DecreaseSellSlot7() => ChangeSellQuantity(7, -1);
+    
+    public void OpenAdvice()
+    {
+        mainMenuRoot.SetActive(false);
+
+        if (advicePanel != null)
+            advicePanel.SetActive(true);
+
+        RefreshAdvicePanel();
+    }
+
+    public void BackFromAdvice()
+    {
+        if (advicePanel != null)
+            advicePanel.SetActive(false);
+
+        mainMenuRoot.SetActive(true);
+    }
+
+    private void RefreshAdvicePanel()
+    {
+        int townIndex = currentTown != null && townSystem != null
+            ? townSystem.towns.IndexOf(currentTown)
+            : -1;
+
+        bool alreadyBought = townIndex >= 0 && purchasedAdviceTownIndices.Contains(townIndex);
+        bool canAfford = runState != null && runState.resources != null && runState.resources.gold >= adviceCostGold;
+
+        if (adviceGoldText != null)
+        {
+            int gold = runState != null && runState.resources != null ? runState.resources.gold : 0;
+            adviceGoldText.text = $"{gold}";
+        }
+
+        if (adviceText != null)
+        {
+            if (!alreadyBought && string.IsNullOrWhiteSpace(adviceText.text))
+                adviceText.text = "A local information broker offers trade advice about a neighboring town.";
+        }
+
+        if (adviceBuyButton != null)
+            adviceBuyButton.interactable = !alreadyBought && canAfford;
+
+        if (adviceBuyButtonText != null)
+        {
+            if (alreadyBought)
+                adviceBuyButtonText.text = "Advice Purchased";
+            else if (!canAfford)
+                adviceBuyButtonText.text = $"Need {adviceCostGold} Gold";
+            else
+                adviceBuyButtonText.text = $"Pay {adviceCostGold} Gold";
+        }
+    }
+
+    public void BuyAdvice()
+    {
+        if (currentTown == null || townSystem == null || runState == null || runState.resources == null)
+            return;
+
+        int currentTownIndex = townSystem.towns.IndexOf(currentTown);
+        if (currentTownIndex < 0)
+            return;
+
+        if (purchasedAdviceTownIndices.Contains(currentTownIndex))
+        {
+            RefreshAdvicePanel();
+            return;
+        }
+
+        if (runState.resources.gold < adviceCostGold)
+        {
+            RefreshAdvicePanel();
+            return;
+        }
+
+        if (!runState.resources.SpendGold(adviceCostGold))
+        {
+            RefreshAdvicePanel();
+            return;
+        }
+
+        purchasedAdviceTownIndices.Add(currentTownIndex);
+
+        string advice = BuildTradeAdviceForTown(currentTownIndex);
+
+        if (adviceText != null)
+            adviceText.text = advice;
+
+        resourceHUD?.Refresh();
+        RefreshAdvicePanel();
+    }
+
+    private string BuildTradeAdviceForTown(int currentTownIndex)
+    {
+        if (townSystem == null)
+            return "The broker has nothing useful to say.";
+
+        var roadGenerator = FindFirstObjectByType<TerrainRoadGeneratorComponent>();
+        if (roadGenerator == null || roadGenerator.adjacency == null)
+            return "The broker cannot determine any nearby routes.";
+
+        if (!roadGenerator.adjacency.TryGetValue(currentTownIndex, out var neighbors) || neighbors == null || neighbors.Count == 0)
+            return "There are no neighboring towns to gather rumors from.";
+
+        int neighborIndex = neighbors[UnityEngine.Random.Range(0, neighbors.Count)];
+        if (neighborIndex < 0 || neighborIndex >= townSystem.towns.Count)
+            return "The broker's information seems unreliable.";
+
+        var neighborTown = townSystem.towns[neighborIndex];
+        if (neighborTown == null || neighborTown.marketData == null || neighborTown.marketData.sellPrices == null || neighborTown.marketData.sellPrices.Length == 0)
+            return $"The broker says little of value about {neighborTown?.townName ?? "that town"}.";
+
+        TownManager.SellPriceData best = neighborTown.marketData.sellPrices[0];
+
+        for (int i = 1; i < neighborTown.marketData.sellPrices.Length; i++)
+        {
+            var candidate = neighborTown.marketData.sellPrices[i];
+            if (candidate != null && candidate.price > best.price)
+                best = candidate;
+        }
+
+        if (best == null || best.type == TradeGoodType.None)
+            return $"The broker has no useful trade rumor about {neighborTown.townName}.";
+
+        return $"A broker whispers that {best.type} sells well in {neighborTown.townName}. Traders there are paying around {best.price} gold.";
+    }
     
 }

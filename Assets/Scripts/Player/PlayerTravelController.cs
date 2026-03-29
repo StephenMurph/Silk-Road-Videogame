@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -28,6 +29,10 @@ public class PlayerTravelController : MonoBehaviour
     private PlayerMotor player;
     private Vector3 playerCombatHomePos;
     private Quaternion playerCombatHomeRot;
+    
+    [Header("Travel HUD")]
+    [SerializeField] private GameObject destinationPanel;
+    [SerializeField] private TMP_Text destinationText;
 
     [Header("Dice")]
     [SerializeField] private GameObject dicePrefab;
@@ -174,6 +179,8 @@ public class PlayerTravelController : MonoBehaviour
             nextTownId = -1;
             return;
         }
+        
+        RefreshDestinationHUD();
 
         EnsurePlayerExists();
 
@@ -256,6 +263,7 @@ public class PlayerTravelController : MonoBehaviour
                 i =>
                 {
                     currentSpaceIndex = i;
+                    RefreshDestinationHUD();
                     pendingMoves--;
                 },
                 0f);
@@ -509,6 +517,8 @@ public class PlayerTravelController : MonoBehaviour
 
         int pendingSpawns = 1 + companions.Count;
         
+        RefreshDestinationHUD();
+        
         StartCoroutine(SpawnMotorFromTown(player, townPos, leaderSpawnPos, forward, () =>
         {
             pendingSpawns--;
@@ -645,6 +655,8 @@ public class PlayerTravelController : MonoBehaviour
             townUI.ShowTown(townSystem.towns[currentTownId]);
         }
         
+        HideDestinationHUD();
+        
         RefreshMusicForCurrentContext(true);
         RefreshRainFollowTarget();
 
@@ -671,12 +683,13 @@ public class PlayerTravelController : MonoBehaviour
             inventoryUI.SetTravelUIVisible(true);
 
         RefreshMusicForCurrentContext(false);
-        
+    
         cameraFocus.SetParent(null);
         cameraFocus.position = player.transform.position;
 
         cameraFollow.SetTarget(player.transform, snap);
         RefreshRainFollowTarget();
+        RefreshDestinationHUD();
     }
 
     private void OnDrawGizmosSelected()
@@ -1239,5 +1252,40 @@ public class PlayerTravelController : MonoBehaviour
 
         while (pending > 0)
             yield return null;
+    }
+    
+    private void RefreshDestinationHUD()
+    {
+        bool showTravelTarget =
+            nextTownId >= 0 &&
+            townSystem != null &&
+            nextTownId < townSystem.towns.Count &&
+            activeSpaces != null &&
+            activeSpaces.Count > 0 &&
+            player != null;
+
+        if (destinationPanel != null)
+            destinationPanel.SetActive(showTravelTarget);
+        else if (destinationText != null)
+            destinationText.gameObject.SetActive(showTravelTarget);
+
+        if (!showTravelTarget || destinationText == null)
+            return;
+
+        int spacesRemaining = Mathf.Max(0, (activeSpaces.Count - 1) - currentSpaceIndex);
+        string townName = townSystem.towns[nextTownId] != null
+            ? townSystem.towns[nextTownId].townName
+            : "Unknown Town";
+
+        string spacesWord = spacesRemaining == 1 ? "space" : "spaces";
+        destinationText.text = $"{townName}\n{spacesRemaining} {spacesWord} away";
+    }
+
+    private void HideDestinationHUD()
+    {
+        if (destinationPanel != null)
+            destinationPanel.SetActive(false);
+        else if (destinationText != null)
+            destinationText.gameObject.SetActive(false);
     }
 }
