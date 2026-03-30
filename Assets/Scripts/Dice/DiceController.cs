@@ -64,6 +64,8 @@ public class DiceController : MonoBehaviour
     [SerializeField] private float minImpactSoundSpeed = 1.5f;
     [SerializeField] private float impactSoundCooldown = 0.06f;
     
+    public bool HasBeenThrown => thrown;
+    
     private float lastImpactSoundTime = -999f;
 
     private Terrain terrain;
@@ -176,7 +178,7 @@ public class DiceController : MonoBehaviour
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
-        
+    
         if (diceColider) diceColider.isTrigger = true;
 
         if (diceColider) diceColider.enabled = true;
@@ -548,5 +550,14 @@ public class DiceController : MonoBehaviour
 
         lastImpactSoundTime = Time.time;
         impactSource.PlayOneShot(clip, volume);
+    }
+    
+    public void ForceResult(int value)
+    {
+        if (revealing || showingResult)
+            return;
+
+        int clampedValue = Mathf.Clamp(value, 1, 6);
+        StartCoroutine(RevealResultRoutine(clampedValue));
     }
 }

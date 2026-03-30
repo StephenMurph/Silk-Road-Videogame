@@ -84,7 +84,9 @@ public class TravelEventManager : MonoBehaviour
         if (!rainController)
             rainController = FindFirstObjectByType<RainController>();
 
-        rng = new System.Random(eventSeed);
+        var terrainManager = FindFirstObjectByType<TerrainManager>();
+        int seedBase = terrainManager != null ? terrainManager.seed : eventSeed;
+        rng = new System.Random(seedBase ^ eventSeed);
     }
 
     public bool TryTriggerRandomEventAtPosition(

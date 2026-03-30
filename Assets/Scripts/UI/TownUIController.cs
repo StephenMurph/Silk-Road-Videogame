@@ -54,6 +54,9 @@ public class TownUIController : MonoBehaviour
     [SerializeField] private Button sellConfirmButton;
     [SerializeField] private TMP_Text sellTotalText;
     [SerializeField] private TMP_Text sellGoldAfterText;
+    [SerializeField] private SellCargoSlotUI sellFoodSlot;
+    [SerializeField] private SellCargoSlotUI sellWaterSlot;
+    [SerializeField] private int[] selectedSupplySellQuantities = new int[2];
     
     [Header("Advice Panel")]
     [SerializeField] private GameObject advicePanel;
@@ -1084,6 +1087,9 @@ public class TownUIController : MonoBehaviour
     {
         for (int i = 0; i < selectedSellQuantities.Length; i++)
             selectedSellQuantities[i] = 0;
+
+        for (int i = 0; i < selectedSupplySellQuantities.Length; i++)
+            selectedSupplySellQuantities[i] = 0;
     }
 
     private void RefreshSellPanel()
@@ -1116,7 +1122,12 @@ public class TownUIController : MonoBehaviour
 
             RefreshSellCargoSlot(row.slotB, slotB, slotIndex);
             slotIndex++;
+            
         }
+        
+        
+        RefreshSupplySellSlot(sellFoodSlot, true);
+        RefreshSupplySellSlot(sellWaterSlot, false);
 
         RefreshSellTotals();
     }
@@ -1185,23 +1196,27 @@ public class TownUIController : MonoBehaviour
 
     private int GetSelectedSellTotalValue()
     {
-        if (runState == null || runState.party == null || runState.party.members == null)
-            return 0;
-
         int total = 0;
-        int slotIndex = 0;
 
-        for (int i = 0; i < runState.party.members.Count; i++)
+        if (runState != null && runState.party != null && runState.party.members != null)
         {
-            var member = runState.party.members[i];
-            if (member == null) continue;
+            int slotIndex = 0;
 
-            total += GetSellValueForSlot(member.slotA, slotIndex);
-            slotIndex++;
+            for (int i = 0; i < runState.party.members.Count; i++)
+            {
+                var member = runState.party.members[i];
+                if (member == null) continue;
 
-            total += GetSellValueForSlot(member.slotB, slotIndex);
-            slotIndex++;
+                total += GetSellValueForSlot(member.slotA, slotIndex);
+                slotIndex++;
+
+                total += GetSellValueForSlot(member.slotB, slotIndex);
+                slotIndex++;
+            }
         }
+
+        total += selectedSupplySellQuantities[0] * GetFoodSellPrice();
+        total += selectedSupplySellQuantities[1] * GetWaterSellPrice();
 
         return total;
     }
@@ -1297,6 +1312,15 @@ public class TownUIController : MonoBehaviour
             CommitSellForSlot(member.slotB, slotIndex);
             slotIndex++;
         }
+
+        int foodToSell = Mathf.Clamp(selectedSupplySellQuantities[0], 0, runState.resources.food);
+        int waterToSell = Mathf.Clamp(selectedSupplySellQuantities[1], 0, runState.resources.water);
+
+        if (foodToSell > 0)
+            runState.resources.ConsumeFood(foodToSell);
+
+        if (waterToSell > 0)
+            runState.resources.ConsumeWater(waterToSell);
 
         runState.resources.AddGold(totalSellValue);
 
@@ -1466,5 +1490,85 @@ public class TownUIController : MonoBehaviour
 
         return $"A broker whispers that {best.type} sells well in {neighborTown.townName}. Traders there are paying around {best.price} gold.";
     }
+    
+    private int GetFoodSellPrice()
+    {
+        if (currentTown == null || currentTown.marketData == null)
+            return 1;
+    
+        return Mathf.Max(1, currentTown.marketData.foodPrice - 1);
+    }
+    
+    private int GetWaterSellPrice()
+    {
+        if (currentTown == null || currentTown.marketData == null)
+            return 1;
+    
+        return Mathf.Max(1, currentTown.marketData.waterPrice - 1);
+    }
+    
+    private void RefreshSupplySellSlot(SellCargoSlotUI ui, bool isFood)
+    {
+        if (ui == null)
+            return;
+
+        if (ui.root != null)
+            ui.root.SetActive(true);
+
+        int ownedQuantity = 0;
+        int selectedQuantity = 0;
+        int price = 0;
+
+        if (runState != null && runState.resources != null)
+        {
+            ownedQuantity = isFood ? runState.resources.food : runState.resources.water;
+            selectedQuantity = selectedSupplySellQuantities[isFood ? 0 : 1];
+            selectedQuantity = Mathf.Clamp(selectedQuantity, 0, ownedQuantity);
+            selectedSupplySellQuantities[isFood ? 0 : 1] = selectedQuantity;
+            price = isFood ? GetFoodSellPrice() : GetWaterSellPrice();
+        }
+
+        if (ui.iconImage != null)
+        {
+            ui.iconImage.enabled = false;
+            ui.iconImage.sprite = null;
+        }
+
+        if (ui.sellQuantityText != null)
+            ui.sellQuantityText.text = selectedQuantity.ToString();
+
+        if (ui.sellPriceText != null)
+            ui.sellPriceText.text = price.ToString();
+
+        if (ui.minusButton != null)
+            ui.minusButton.interactable = selectedQuantity > 0;
+
+        if (ui.plusButton != null)
+            ui.plusButton.interactable = selectedQuantity < ownedQuantity;
+    }
+    
+    public void IncreaseSellFood() => ChangeSupplySellQuantity(true, +1);
+    public void DecreaseSellFood() => ChangeSupplySellQuantity(true, -1);
+
+    public void IncreaseSellWater() => ChangeSupplySellQuantity(false, +1);
+    public void DecreaseSellWater() => ChangeSupplySellQuantity(false, -1);
+    
+    private void ChangeSupplySellQuantity(bool isFood, int delta)
+    {
+        if (runState == null || runState.resources == null)
+            return;
+
+        int index = isFood ? 0 : 1;
+        int ownedQuantity = isFood ? runState.resources.food : runState.resources.water;
+
+        int current = selectedSupplySellQuantities[index];
+        current += delta;
+        current = Mathf.Clamp(current, 0, ownedQuantity);
+
+        selectedSupplySellQuantities[index] = current;
+
+        RefreshSellPanel();
+    }
+    
     
 }

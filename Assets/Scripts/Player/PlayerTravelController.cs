@@ -37,6 +37,8 @@ public class PlayerTravelController : MonoBehaviour
     [Header("Dice")]
     [SerializeField] private GameObject dicePrefab;
 
+    [SerializeField] private float diceTimeoutSeconds = 8f;
+
     [Header("Path / Hops")]
     [SerializeField] private float minDistanceFromTownWorld = 12f;
     [SerializeField] private float hopSpacingWorld = 8f;
@@ -732,7 +734,6 @@ public class PlayerTravelController : MonoBehaviour
     
     private IEnumerator WaitForDicePair()
     {
-        // 🔥 extra safety
         if (travelEventManager != null)
             yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
 
@@ -741,8 +742,42 @@ public class PlayerTravelController : MonoBehaviour
 
         SpawnDicePair();
 
+        // Wait until the player has actually thrown both dice.
+        yield return new WaitUntil(() =>
+            diceA != null &&
+            diceB != null &&
+            diceA.HasBeenThrown &&
+            diceB.HasBeenThrown
+        );
+
+        float timer = 0f;
+        bool forced = false;
+
         while (!diceAReady || !diceBReady)
+        {
+            timer += Time.deltaTime;
+
+            if (!forced && timer >= diceTimeoutSeconds)
+            {
+                forced = true;
+
+                if (diceA != null && !diceAReady)
+                {
+                    int forcedA = UnityEngine.Random.Range(1, 7);
+                    diceA.ForceResult(forcedA);
+                    Debug.LogWarning("Dice A timeout after throw → forcing reveal result: " + forcedA);
+                }
+
+                if (diceB != null && !diceBReady)
+                {
+                    int forcedB = UnityEngine.Random.Range(1, 7);
+                    diceB.ForceResult(forcedB);
+                    Debug.LogWarning("Dice B timeout after throw → forcing reveal result: " + forcedB);
+                }
+            }
+
             yield return null;
+        }
     }
     
     private IEnumerator ShrinkAndDestroy(GameObject go, float duration)
@@ -1073,12 +1108,36 @@ public class PlayerTravelController : MonoBehaviour
             yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
 
         diceAReady = false;
-        diceBReady = false;
 
         SpawnDicePair();
 
+        // Wait until the player has actually thrown the die.
+        yield return new WaitUntil(() =>
+            diceA != null &&
+            diceA.HasBeenThrown
+        );
+
+        float timer = 0f;
+        bool forced = false;
+
         while (!diceAReady)
+        {
+            timer += Time.deltaTime;
+
+            if (!forced && timer >= diceTimeoutSeconds)
+            {
+                forced = true;
+
+                if (diceA != null)
+                {
+                    int forcedA = UnityEngine.Random.Range(1, 7);
+                    diceA.ForceResult(forcedA);
+                    Debug.LogWarning("Single die timeout after throw → forcing reveal result: " + forcedA);
+                }
+            }
+
             yield return null;
+        }
     }
     
     private void RefreshRainFollowTarget()
