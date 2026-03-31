@@ -10,7 +10,9 @@ public class TravelEventManager : MonoBehaviour
     {
         None,
         Rain,
-        Bandits
+        Bandits,
+        AbandonedCaravanFood,
+        AbandonedCaravanWater
     }
 
     [Header("Popup")]
@@ -18,6 +20,8 @@ public class TravelEventManager : MonoBehaviour
     [SerializeField] private Sprite rainSprite;
     [SerializeField] private Sprite banditSprite;
     [SerializeField] private Sprite moneySprite;
+    [SerializeField] private Sprite foodSprite;
+    [SerializeField] private Sprite waterSprite;
 
     [Header("Random Events")]
     [SerializeField, Range(0f, 1f)] private float eventChancePerMove = 0.15f;
@@ -147,6 +151,9 @@ public class TravelEventManager : MonoBehaviour
             AddWeightedEvent(weightedEvents, TravelEventType.Bandits, 3);
         }
 
+        AddWeightedEvent(weightedEvents, TravelEventType.AbandonedCaravanFood, 2);
+        AddWeightedEvent(weightedEvents, TravelEventType.AbandonedCaravanWater, 2);
+
         if (weightedEvents.Count == 0)
             return TravelEventType.None;
 
@@ -165,6 +172,14 @@ public class TravelEventManager : MonoBehaviour
 
             case TravelEventType.Bandits:
                 TriggerBanditEvent(travelController);
+                break;
+
+            case TravelEventType.AbandonedCaravanFood:
+                TriggerAbandonedCaravanFoodEvent();
+                break;
+
+            case TravelEventType.AbandonedCaravanWater:
+                TriggerAbandonedCaravanWaterEvent();
                 break;
         }
     }
@@ -538,6 +553,70 @@ public class TravelEventManager : MonoBehaviour
             {
                 isEventBlockingTravel = false;
                 onClosed?.Invoke();
+            }
+        );
+    }
+    
+    private void TriggerAbandonedCaravanFoodEvent()
+    {
+        isEventBlockingTravel = true;
+
+        if (!eventPopupUI)
+        {
+            Debug.LogError("TravelEventManager: No EventPopupUI assigned/found for abandoned caravan food event.");
+            return;
+        }
+
+        int foundFood = rng.Next(50, 101);
+
+        eventPopupUI.ShowSimpleEvent(
+            "Abandoned Caravan",
+            $"You found an abandoned caravan.\nYou recovered {foundFood} food.",
+            foodSprite,
+            "OK",
+            () =>
+            {
+                RunState runState = FindFirstObjectByType<RunState>();
+                if (runState != null && runState.resources != null)
+                    runState.resources.AddFood(foundFood);
+
+                var resourceHUD = FindFirstObjectByType<ResourceHUDController>();
+                if (resourceHUD != null)
+                    resourceHUD.Refresh();
+
+                isEventBlockingTravel = false;
+            }
+        );
+    }
+
+    private void TriggerAbandonedCaravanWaterEvent()
+    {
+        isEventBlockingTravel = true;
+
+        if (!eventPopupUI)
+        {
+            Debug.LogError("TravelEventManager: No EventPopupUI assigned/found for abandoned caravan water event.");
+            return;
+        }
+
+        int foundWater = rng.Next(50, 101);
+
+        eventPopupUI.ShowSimpleEvent(
+            "Abandoned Caravan",
+            $"You found an abandoned caravan.\nYou recovered {foundWater} water.",
+            waterSprite,
+            "OK",
+            () =>
+            {
+                RunState runState = FindFirstObjectByType<RunState>();
+                if (runState != null && runState.resources != null)
+                    runState.resources.AddWater(foundWater);
+
+                var resourceHUD = FindFirstObjectByType<ResourceHUDController>();
+                if (resourceHUD != null)
+                    resourceHUD.Refresh();
+
+                isEventBlockingTravel = false;
             }
         );
     }
