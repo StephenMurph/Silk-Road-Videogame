@@ -22308,6 +22308,7 @@ MonoBehaviour:
   goldPerMemberPerRoll: 0
   starvationDamagePerRoll: 10
   dehydrationDamagePerRoll: 10
+  sickMemberIndex: -1
 --- !u!4 &528321610
 Transform:
   m_ObjectHideFlags: 0
@@ -92129,6 +92130,7 @@ MonoBehaviour:
   moneySprite: {fileID: 21300000, guid: 75ea6a00487dded44b7414b5081bda2f, type: 3}
   foodSprite: {fileID: 21300000, guid: 4e2c461dc0f224d4199df10abb000654, type: 3}
   waterSprite: {fileID: 21300000, guid: f4f5c3c5b3da96049a4fe31ad2644b70, type: 3}
+  skullSprite: {fileID: 21300000, guid: 5a587c6c8ff2de7448de023fbf7747b0, type: 3}
   eventChancePerMove: 0.15
   eventSeed: 12345
   rainMovementPenaltyTurns: 3
@@ -92143,8 +92145,34 @@ MonoBehaviour:
   banditSpawnDistanceAhead: 11
   banditSideOffset: 0
   banditMinDistanceFromTown: 20
-  enemyFightController: {fileID: 0}
+  enemyFightController: {fileID: 890436082}
+  banditConfig:
+    enemyName: Enemy
+    minHp: 20
+    maxHp: 30
+    rewardGold: 1
+    goldRewardRange: {x: 30, y: 80}
+    rewardFood: 0
+    foodRewardRange: {x: 20, y: 50}
+    hitSound: {fileID: 8300000, guid: 9d4991f943d0bc2449fd93efe66a6064, type: 3}
+    hopLandClips:
+    - {fileID: 8300000, guid: c7bcbbddedbb38f4196481abb2deea51, type: 3}
+    victorySprite: {fileID: 21300000, guid: 75ea6a00487dded44b7414b5081bda2f, type: 3}
   banditMusicState: 5
+  wildDogPrefab: {fileID: 1814273094343670429, guid: 16d240c254f380344b1e3773f10358bb, type: 3}
+  wildDogSprite: {fileID: 21300000, guid: 90067c5dbfd872e4fa8036f81042f5ca, type: 3}
+  wildDogConfig:
+    enemyName: Enemy
+    minHp: 20
+    maxHp: 30
+    rewardGold: 1
+    goldRewardRange: {x: 30, y: 80}
+    rewardFood: 0
+    foodRewardRange: {x: 20, y: 50}
+    hitSound: {fileID: 8300000, guid: eb8db75c776e42a4c861dc229ad4f98b, type: 3}
+    hopLandClips:
+    - {fileID: 8300000, guid: c7bcbbddedbb38f4196481abb2deea51, type: 3}
+    victorySprite: {fileID: 21300000, guid: 4e2c461dc0f224d4199df10abb000654, type: 3}
 --- !u!4 &1979313367
 Transform:
   m_ObjectHideFlags: 0

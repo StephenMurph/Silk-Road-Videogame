@@ -25,9 +25,13 @@ public class PartyState
 
         if (members.Count == 0)
         {
+            string leaderName = string.IsNullOrWhiteSpace(GameLaunchState.NewLeaderName)
+                ? "Stephen"
+                : GameLaunchState.NewLeaderName.Trim();
+
             members.Add(new PartyMemberState
             {
-                memberName = "Stephen",
+                memberName = leaderName,
                 maxHealth = 100,
                 currentHealth = 100
             });
