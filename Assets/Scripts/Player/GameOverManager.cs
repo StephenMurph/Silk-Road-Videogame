@@ -23,11 +23,15 @@ public class GameOverManager : MonoBehaviour
             return;
 
         gameOverTriggered = true;
-        Time.timeScale = 1f;
+        Time.timeScale = 0f;
+
+        if (GameAudioManager.Instance != null)
+            GameAudioManager.Instance.PlayMusic(GameAudioManager.MusicState.GameOver);
 
         if (eventPopupUI == null)
         {
             Debug.LogError("GameOverManager: No EventPopupUI found.");
+            Time.timeScale = 1f;
             SceneManager.LoadScene(mainMenuSceneName);
             return;
         }
@@ -39,6 +43,7 @@ public class GameOverManager : MonoBehaviour
             "OK",
             () =>
             {
+                Time.timeScale = 1f;
                 SceneManager.LoadScene(mainMenuSceneName);
             }
         );

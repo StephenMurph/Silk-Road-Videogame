@@ -23,6 +23,12 @@ public class PlayerMotor : MonoBehaviour
     [SerializeField] private float spawnHopHeight = 15f;
     [SerializeField] private float spawnStartScale = 0.08f;
 
+    [Header("Hop Land Audio")]
+    [SerializeField] private AudioSource hopAudioSource;
+    [SerializeField] private AudioClip[] hopLandClips;
+    [SerializeField] private float hopLandVolume = 1f;
+    [SerializeField] private Vector2 hopPitchRange = new Vector2(0.96f, 1.04f);
+
     public bool IsPhysicsDriven => rb != null && !rb.isKinematic;
 
     private Coroutine moveRoutine;
@@ -33,6 +39,28 @@ public class PlayerMotor : MonoBehaviour
 
         if (!rb) rb = GetComponent<Rigidbody>();
         if (!col) col = GetComponent<Collider>();
+        if (!hopAudioSource) hopAudioSource = GetComponent<AudioSource>();
+    }
+
+    private void PlayHopLandSound()
+    {
+        if (hopAudioSource == null)
+            return;
+
+        if (hopLandClips == null || hopLandClips.Length == 0)
+            return;
+
+        int index = Random.Range(0, hopLandClips.Length);
+        AudioClip clip = hopLandClips[index];
+        if (clip == null)
+            return;
+
+        float minPitch = Mathf.Min(hopPitchRange.x, hopPitchRange.y);
+        float maxPitch = Mathf.Max(hopPitchRange.x, hopPitchRange.y);
+
+        hopAudioSource.pitch = Random.Range(minPitch, maxPitch);
+        hopAudioSource.PlayOneShot(clip, hopLandVolume);
+        hopAudioSource.pitch = 1f;
     }
 
     public void EnablePhysics()
@@ -230,6 +258,8 @@ public class PlayerMotor : MonoBehaviour
                 transform.position = landed;
             }
 
+            PlayHopLandSound();
+
             currentIndex = nextIndex;
         }
 
@@ -348,6 +378,7 @@ public class PlayerMotor : MonoBehaviour
         }
 
         transform.localScale = fullScale;
+        PlayHopLandSound();
     }
     
     public void BeginHopToPosition(
@@ -392,6 +423,7 @@ public class PlayerMotor : MonoBehaviour
         transform.position = targetPos;
         transform.rotation = targetRot;
 
+        PlayHopLandSound();
         onComplete?.Invoke();
     }
 }

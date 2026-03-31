@@ -30,10 +30,15 @@ public class EnemyFightController : MonoBehaviour
     [SerializeField] private float impactPause = 0.10f;
     [SerializeField] private float returnTime = 0.22f;
     [SerializeField] private float returnHopHeight = 0.7f;
+
+    [Header("Attack Hop Audio")]
+    [SerializeField] private AudioClip[] attackHopLandClips;
+    [SerializeField] private float attackHopLandVolume = 1f;
+    [SerializeField] private Vector2 attackHopPitchRange = new Vector2(0.96f, 1.04f);
     
     [SerializeField] private EventPopupUI eventPopupUI;
     [SerializeField] private Sprite skullSprite;
-    
+
     private readonly Dictionary<Transform, Vector3> combatHomePos = new();
     private readonly Dictionary<Transform, Quaternion> combatHomeRot = new();
 
@@ -71,6 +76,7 @@ public class EnemyFightController : MonoBehaviour
         sfxSource.loop = false;
         sfxSource.spatialBlend = 0f;
     }
+
 
     public void StartFight(GameObject enemy, string enemyName)
     {
@@ -292,7 +298,7 @@ public class EnemyFightController : MonoBehaviour
         Vector3 hitPos = target.position - toTarget * strikeDistanceFromTarget;
         hitPos = travelController.GetGroundedCombatPosition(hitPos);
 
-        yield return ArcHop(attacker, startPos, hitPos, faceRot, strikeTime, strikeHopHeight);
+        yield return ArcHop(attacker, startPos, hitPos, faceRot, strikeTime, strikeHopHeight, true);
 
         PlaySwordHitSound();
 
@@ -307,7 +313,7 @@ public class EnemyFightController : MonoBehaviour
 
         yield return new WaitForSeconds(impactPause);
 
-        yield return ArcHop(attacker, hitPos, startPos, startRot, returnTime, strikeHopHeight);
+        yield return ArcHop(attacker, hitPos, startPos, startRot, returnTime, returnHopHeight, true);
 
         attacker.position = startPos;
         attacker.rotation = startRot;
@@ -320,7 +326,8 @@ public class EnemyFightController : MonoBehaviour
         Vector3 end,
         Quaternion targetRot,
         float duration,
-        float height)
+        float height,
+        bool playLandSound)
     {
         if (mover == null || travelController == null)
             yield break;
@@ -329,7 +336,7 @@ public class EnemyFightController : MonoBehaviour
         float dur = Mathf.Max(0.05f, duration);
         
         Vector3 groundedStart = travelController.GetGroundedCombatPosition(start);
-        Vector3 groundedEnd   = travelController.GetGroundedCombatPosition(end);
+        Vector3 groundedEnd = travelController.GetGroundedCombatPosition(end);
 
         while (t < dur)
         {
@@ -338,7 +345,6 @@ public class EnemyFightController : MonoBehaviour
             float s = u * u * (3f - 2f * u);
             
             Vector3 basePos = Vector3.Lerp(groundedStart, groundedEnd, s);
-
             float arc = Mathf.Sin(u * Mathf.PI) * height;
 
             mover.position = basePos + Vector3.up * arc;
@@ -354,7 +360,11 @@ public class EnemyFightController : MonoBehaviour
         
         mover.position = groundedEnd;
         mover.rotation = targetRot;
+
+        if (playLandSound)
+            PlayAttackHopLandSound();
     }
+
 
     private Transform ChooseRandomLivingAlly()
     {
@@ -400,8 +410,10 @@ public class EnemyFightController : MonoBehaviour
 
     private void PlaySwordHitSound()
     {
-        if (sfxSource != null && swordHitClip != null)
-            sfxSource.PlayOneShot(swordHitClip, 1f);
+        if (sfxSource == null || swordHitClip == null)
+            return;
+
+        sfxSource.PlayOneShot(swordHitClip);
     }
 
     private IEnumerator ShrinkAndDestroy(GameObject go, float duration)
@@ -673,4 +685,24 @@ public class EnemyFightController : MonoBehaviour
         }
     }
     
+    private void PlayAttackHopLandSound()
+    {
+        if (sfxSource == null)
+            return;
+
+        if (attackHopLandClips == null || attackHopLandClips.Length == 0)
+            return;
+
+        int index = Random.Range(0, attackHopLandClips.Length);
+        AudioClip clip = attackHopLandClips[index];
+        if (clip == null)
+            return;
+
+        float minPitch = Mathf.Min(attackHopPitchRange.x, attackHopPitchRange.y);
+        float maxPitch = Mathf.Max(attackHopPitchRange.x, attackHopPitchRange.y);
+
+        sfxSource.pitch = Random.Range(minPitch, maxPitch);
+        sfxSource.PlayOneShot(clip, attackHopLandVolume);
+        sfxSource.pitch = 1f;
+    }
 }

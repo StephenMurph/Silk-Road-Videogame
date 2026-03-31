@@ -38088,6 +38088,10 @@ MonoBehaviour:
   impactPause: 0.2
   returnTime: 0.4
   returnHopHeight: 0.7
+  attackHopLandClips:
+  - {fileID: 8300000, guid: c7bcbbddedbb38f4196481abb2deea51, type: 3}
+  attackHopLandVolume: 5
+  attackHopPitchRange: {x: 0.96, y: 1.04}
   eventPopupUI: {fileID: 1322922320}
   skullSprite: {fileID: 21300000, guid: 5a587c6c8ff2de7448de023fbf7747b0, type: 3}
 --- !u!114 &890436083
@@ -90930,6 +90934,8 @@ MonoBehaviour:
   BattleMusic: {fileID: 8300000, guid: 5a833c5812602e4479d343e70f19bdb6, type: 3}
   musicVolume: 0.7
   crossfadeDuration: 1.5
+  sfxSource: {fileID: 0}
+  playerHopLandSfx: {fileID: 0}
 --- !u!4 &2084750151
 Transform:
   m_ObjectHideFlags: 0

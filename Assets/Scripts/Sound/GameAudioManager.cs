@@ -12,7 +12,8 @@ public class GameAudioManager : MonoBehaviour
         DesertTravel,
         GrasslandTown,
         DesertTown,
-        Battle
+        Battle,
+        GameOver
     }
 
     [Header("Sources")]
@@ -25,10 +26,15 @@ public class GameAudioManager : MonoBehaviour
     [SerializeField] private AudioClip grasslandTownMusic;
     [SerializeField] private AudioClip desertTownMusic;
     [SerializeField] private AudioClip BattleMusic;
+    [SerializeField] private AudioClip gameOverMusic;
 
     [Header("Settings")]
     [SerializeField] private float musicVolume = 0.7f;
     [SerializeField] private float crossfadeDuration = 1.5f;
+    
+    [Header("SFX")]
+    [SerializeField] private AudioSource sfxSource;
+    [SerializeField] private AudioClip playerHopLandSfx;
 
     private AudioSource activeSource;
     private AudioSource inactiveSource;
@@ -47,6 +53,13 @@ public class GameAudioManager : MonoBehaviour
 
         if (!musicSourceA) musicSourceA = gameObject.AddComponent<AudioSource>();
         if (!musicSourceB) musicSourceB = gameObject.AddComponent<AudioSource>();
+        
+        if (!sfxSource)
+        {
+            sfxSource = gameObject.AddComponent<AudioSource>();
+            sfxSource.playOnAwake = false;
+            sfxSource.spatialBlend = 0f;
+        }
 
         SetupMusicSource(musicSourceA);
         SetupMusicSource(musicSourceB);
@@ -182,7 +195,19 @@ public class GameAudioManager : MonoBehaviour
             case MusicState.GrasslandTown: return grasslandTownMusic;
             case MusicState.DesertTown: return desertTownMusic;
             case MusicState.Battle: return BattleMusic;
+            case MusicState.GameOver: return gameOverMusic;
             default: return null;
         }
+    }
+    
+    public void PlaySfx(AudioClip clip, float volume = 1f)
+    {
+        if (clip == null) return;
+        sfxSource.PlayOneShot(clip, volume);
+    }
+
+    public void PlayHopLand()
+    {
+        PlaySfx(playerHopLandSfx, 1f);
     }
 }

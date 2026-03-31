@@ -64,6 +64,12 @@ public class DiceController : MonoBehaviour
     [SerializeField] private float minImpactSoundSpeed = 1.5f;
     [SerializeField] private float impactSoundCooldown = 0.06f;
     
+    [SerializeField] private AudioClip sandGroundHitClip;
+    [SerializeField] private float sandGroundHitVolume = 1.2f;
+    
+    [SerializeField] private AudioClip cactusHitClip;
+    [SerializeField] private float cactusHitVolume = 1.2f;
+    
     public bool HasBeenThrown => thrown;
     
     private float lastImpactSoundTime = -999f;
@@ -509,19 +515,25 @@ public class DiceController : MonoBehaviour
         GameObject other = collision.gameObject;
         if (!other)
             return;
-        
+    
         if (other.CompareTag("Player"))
         {
             PlayImpactClip(playerHitClip, playerHitVolume);
             return;
         }
-        
+    
         if (other.CompareTag("Tree"))
         {
             PlayImpactClip(treeHitClip, treeHitVolume);
             return;
         }
-        
+
+        if (other.CompareTag("Cactus"))
+        {
+            PlayImpactClip(cactusHitClip, cactusHitVolume);
+            return;
+        }
+    
         if (terrain != null && terrainManager != null && collision.contactCount > 0)
         {
             ContactPoint contact = collision.GetContact(0);
@@ -533,12 +545,15 @@ public class DiceController : MonoBehaviour
             if (nx >= 0f && nx <= 1f && nz >= 0f && nz <= 1f)
             {
                 float desert = terrainManager.SendMessageDesertMask(nx, nz);
-                
-                if (desert < 0.35f)
+
+                if (desert >= 0.35f)
                 {
-                    PlayImpactClip(grasslandGroundHitClip, grasslandGroundHitVolume);
+                    PlayImpactClip(sandGroundHitClip, sandGroundHitVolume);
                     return;
                 }
+
+                PlayImpactClip(grasslandGroundHitClip, grasslandGroundHitVolume);
+                return;
             }
         }
     }
