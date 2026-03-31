@@ -13,6 +13,7 @@ public class TravelEventManager : MonoBehaviour
         Sandstorm,
         Bandits,
         WildDogs,
+        Sickness,
         AbandonedCaravanFood,
         AbandonedCaravanWater
     }
@@ -32,6 +33,7 @@ public class TravelEventManager : MonoBehaviour
     [SerializeField] private Sprite moneySprite;
     [SerializeField] private Sprite foodSprite;
     [SerializeField] private Sprite waterSprite;
+    [SerializeField] private Sprite skullSprite;
     
     [Header("Random Events")]
     [SerializeField, Range(0f, 1f)] private float eventChancePerMove = 0.15f;
@@ -176,6 +178,7 @@ public class TravelEventManager : MonoBehaviour
 
         AddWeightedEvent(weightedEvents, TravelEventType.AbandonedCaravanFood, 2);
         AddWeightedEvent(weightedEvents, TravelEventType.AbandonedCaravanWater, 2);
+        AddWeightedEvent(weightedEvents, TravelEventType.Sickness, 2);
 
         if (weightedEvents.Count == 0)
             return TravelEventType.None;
@@ -203,6 +206,10 @@ public class TravelEventManager : MonoBehaviour
 
             case TravelEventType.WildDogs:
                 TriggerWildDogEvent(travelController);
+                break;
+            
+            case TravelEventType.Sickness:
+                TriggerSicknessEvent();
                 break;
 
             case TravelEventType.AbandonedCaravanFood:
@@ -802,5 +809,35 @@ public class TravelEventManager : MonoBehaviour
         }
 
         enemyFightController.StartFight(activeBandit, wildDogConfig);
+    }
+    
+    private void TriggerSicknessEvent()
+    {
+        isEventBlockingTravel = true;
+
+        RunState runState = FindFirstObjectByType<RunState>();
+
+        if (runState == null || runState.party == null || runState.party.members.Count == 0)
+        {
+            isEventBlockingTravel = false;
+            return;
+        }
+
+        int index = UnityEngine.Random.Range(0, runState.party.members.Count);
+        runState.sickMemberIndex = index;
+
+        var member = runState.party.members[index];
+        string name = string.IsNullOrWhiteSpace(member.memberName) ? "A party member" : member.memberName;
+
+        eventPopupUI.ShowSimpleEvent(
+            "Illness",
+            $"{name} has fallen ill.",
+            skullSprite,
+            "OK",
+            () =>
+            {
+                isEventBlockingTravel = false;
+            }
+        );
     }
 }

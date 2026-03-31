@@ -15,6 +15,9 @@ public class RunState : MonoBehaviour
 
     [Min(0)] public int starvationDamagePerRoll = 10;
     [Min(0)] public int dehydrationDamagePerRoll = 10;
+    
+    public int sickMemberIndex = -1;
+    public bool IsSomeoneSick => sickMemberIndex >= 0;
 
     void Awake()
     {
@@ -135,6 +138,35 @@ public class RunState : MonoBehaviour
 
         var leader = party.members[0];
         return leader == null || leader.IsDead();
+    }
+    
+    public bool ProcessSicknessTick()
+    {
+        if (sickMemberIndex < 0 || party == null || party.members == null)
+            return false;
+
+        if (sickMemberIndex >= party.members.Count)
+        {
+            sickMemberIndex = -1;
+            return false;
+        }
+
+        var member = party.members[sickMemberIndex];
+        if (member == null)
+        {
+            sickMemberIndex = -1;
+            return false;
+        }
+        
+        member.ApplyDamage(starvationDamagePerRoll);
+        
+        if (UnityEngine.Random.Range(0, 8) == 0)
+        {
+            sickMemberIndex = -1;
+            return true; 
+        }
+
+        return false;
     }
 }
 

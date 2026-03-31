@@ -838,6 +838,8 @@ public class PlayerTravelController : MonoBehaviour
 
         if (result.goldShortageTriggered)
             HandleGoldShortageTriggered(result);
+        
+        HandleSickness();
     }
 
     private void HandleStarvationTriggered(TravelSupplyResult result)
@@ -855,6 +857,63 @@ public class PlayerTravelController : MonoBehaviour
             "You have to leave behind what they were carrying.",
             "Your caravan leader starved to death."
         ));
+    }
+    
+    private void HandleSickness()
+    {
+        if (runState == null || !runState.IsSomeoneSick)
+            return;
+
+        int index = runState.sickMemberIndex;
+
+        var member = runState.party.members[index];
+        if (member == null)
+        {
+            runState.sickMemberIndex = -1;
+            return;
+        }
+
+        string name = string.IsNullOrWhiteSpace(member.memberName) ? "A party member" : member.memberName;
+
+        bool recovered = runState.ProcessSicknessTick();
+
+        partyHUD?.Refresh();
+        
+        if (member.IsDead())
+        {
+            if (index == 0)
+            {
+                TriggerLeaderDeathGameOver($"{name} succumbed to illness.");
+                return;
+            }
+
+            StartCoroutine(ProcessDeathsAfterDamage(
+                "You have to leave behind what they were carrying.",
+                $"{name} died from illness."
+            ));
+
+            return;
+        }
+        
+        if (recovered)
+        {
+            bool acknowledged = false;
+
+            eventPopupUI.ShowSimpleEvent(
+                "Recovery",
+                $"{name} is feeling better.",
+                skullSprite,
+                "OK",
+                () => acknowledged = true
+            );
+
+            StartCoroutine(WaitForPopup(acknowledged));
+        }
+    }
+    
+    private IEnumerator WaitForPopup(bool acknowledged)
+    {
+        yield return new WaitUntil(() => acknowledged);
     }
 
     private void HandleDehydrationTriggered(TravelSupplyResult result)
