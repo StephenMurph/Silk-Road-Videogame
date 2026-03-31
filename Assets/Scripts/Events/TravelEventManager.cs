@@ -10,31 +10,45 @@ public class TravelEventManager : MonoBehaviour
     {
         None,
         Rain,
+        Sandstorm,
         Bandits,
         AbandonedCaravanFood,
         AbandonedCaravanWater
     }
 
+    private enum WeatherType
+    {
+        None,
+        Rain,
+        Sandstorm
+    }
+    
     [Header("Popup")]
     [SerializeField] private EventPopupUI eventPopupUI;
     [SerializeField] private Sprite rainSprite;
+    [SerializeField] private Sprite sandstormSprite;
     [SerializeField] private Sprite banditSprite;
     [SerializeField] private Sprite moneySprite;
     [SerializeField] private Sprite foodSprite;
     [SerializeField] private Sprite waterSprite;
-
+    
     [Header("Random Events")]
     [SerializeField, Range(0f, 1f)] private float eventChancePerMove = 0.15f;
     [SerializeField] private int eventSeed = 12345;
 
-    [Header("Rain")]
+    [Header("Weather")]
     [SerializeField] private int rainMovementPenaltyTurns = 3;
-
+    [SerializeField] private int sandstormMovementPenaltyTurns = 3;
+    
     [Header("Rain Visuals")]
     [SerializeField] private Material rainSkybox;
     [SerializeField] private Light mainDirectionalLight;
     [SerializeField] private float rainLightIntensity = 1f;
     [SerializeField] private RainController rainController;
+    
+    [Header("Sandstorm Visuals")]
+    [SerializeField] private ParticleSystem sandstormParticles;
+    [SerializeField] private float sandstormLightIntensity = 1f;
 
     [Header("Bandits")]
     [SerializeField] private GameObject banditPrefab;
@@ -46,16 +60,18 @@ public class TravelEventManager : MonoBehaviour
     [Header("Bandit Music")]
     [SerializeField] private GameAudioManager.MusicState banditMusicState = GameAudioManager.MusicState.Battle;
     
+    private WeatherType activeWeather = WeatherType.None;
+    
     private TravelEventType lastTriggeredEvent = TravelEventType.None;
 
-    public bool IsWeatherActive =>
-        RainTurnsRemaining > 0;
+    public bool IsWeatherActive => WeatherTurnsRemaining > 0;
+    public bool RainPenaltyActive => activeWeather == WeatherType.Rain && WeatherTurnsRemaining > 0;
+    public bool SandstormPenaltyActive => activeWeather == WeatherType.Sandstorm && WeatherTurnsRemaining > 0;
+
+    public int WeatherTurnsRemaining { get; private set; }
 
     private GameAudioManager.MusicState previousMusicState;
     private bool hasStoredMusic;
-
-    public int RainTurnsRemaining { get; private set; }
-    public bool RainPenaltyActive => RainTurnsRemaining > 0;
     public bool EventPopupShowing => eventPopupUI != null && eventPopupUI.IsShowing;
 
     private System.Random rng;
@@ -129,6 +145,7 @@ public class TravelEventManager : MonoBehaviour
 
         float desert = terrainManager.SendMessageDesertMask(nx, nz);
         bool isGrassland = desert < 0.35f;
+        bool isDesert = desert >= 0.35f;
 
         List<TravelEventType> weightedEvents = new List<TravelEventType>();
 
@@ -137,13 +154,11 @@ public class TravelEventManager : MonoBehaviour
             AddWeightedEvent(weightedEvents, TravelEventType.Rain, 3);
         }
 
-        if (!IsWeatherActive)
+        if (isDesert && !IsWeatherActive)
         {
-            // later:
-            // if (isDesert)
-            //     AddWeightedEvent(weightedEvents, TravelEventType.Sandstorm, 3);
+            AddWeightedEvent(weightedEvents, TravelEventType.Sandstorm, 3);
         }
-
+        
         bool nearTown = IsNearAnyTown(worldPos, banditMinDistanceFromTown, terrain);
 
         if (!nearTown)
@@ -168,6 +183,10 @@ public class TravelEventManager : MonoBehaviour
         {
             case TravelEventType.Rain:
                 TriggerRainEvent();
+                break;
+
+            case TravelEventType.Sandstorm:
+                TriggerSandstormEvent();
                 break;
 
             case TravelEventType.Bandits:
@@ -205,39 +224,51 @@ public class TravelEventManager : MonoBehaviour
 
     private void ApplyRainPenalty()
     {
-        RainTurnsRemaining = rainMovementPenaltyTurns;
+        activeWeather = WeatherType.Rain;
+        WeatherTurnsRemaining = rainMovementPenaltyTurns;
 
         CacheOriginalVisuals();
         ApplyRainVisuals();
 
         isEventBlockingTravel = false;
 
-        Debug.Log($"Rainfall applied. Single-die movement for {RainTurnsRemaining} turns.");
+        Debug.Log($"Rainfall applied. Single-die movement for {WeatherTurnsRemaining} turns.");
     }
 
     public void ConsumeTravelRoll()
     {
-        if (RainTurnsRemaining <= 0)
+        if (WeatherTurnsRemaining <= 0)
             return;
 
-        RainTurnsRemaining--;
+        WeatherTurnsRemaining--;
 
-        if (RainTurnsRemaining == 0)
-            ShowRainEndedPopup();
+        if (WeatherTurnsRemaining == 0)
+            ShowWeatherEndedPopup();
     }
 
-    private void ShowRainEndedPopup()
+    private void ShowWeatherEndedPopup()
     {
+        WeatherType endedWeather = activeWeather;
+
         RestoreVisuals();
+        activeWeather = WeatherType.None;
+
         isEventBlockingTravel = true;
 
         if (!eventPopupUI)
             return;
 
+        string title = endedWeather == WeatherType.Sandstorm ? "Sandstorm" : "Rainfall";
+        string body = endedWeather == WeatherType.Sandstorm
+            ? "The sandstorm has passed."
+            : "The rain has stopped.";
+
+        Sprite sprite = endedWeather == WeatherType.Sandstorm ? sandstormSprite : rainSprite;
+
         eventPopupUI.ShowSimpleEvent(
-            "Rainfall",
-            "The rain has stopped.",
-            rainSprite,
+            title,
+            body,
+            sprite,
             "OK",
             () =>
             {
@@ -290,6 +321,9 @@ public class TravelEventManager : MonoBehaviour
 
         if (rainController != null)
             rainController.StopRain();
+
+        if (sandstormParticles != null)
+            sandstormParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
     }
 
     private void TriggerBanditEvent(PlayerTravelController travelController)
@@ -619,5 +653,52 @@ public class TravelEventManager : MonoBehaviour
                 isEventBlockingTravel = false;
             }
         );
+    }
+    
+    public void TriggerSandstormEvent()
+    {
+        isEventBlockingTravel = true;
+
+        if (!eventPopupUI)
+        {
+            Debug.LogError("TravelEventManager: No EventPopupUI assigned/found.");
+            return;
+        }
+
+        eventPopupUI.ShowSimpleEvent(
+            "Sandstorm",
+            "A sandstorm sweeps across the road.\nMovement penalty for 3 turns.",
+            sandstormSprite,
+            "OK",
+            ApplySandstormPenalty
+        );
+    }
+
+    private void ApplySandstormPenalty()
+    {
+        activeWeather = WeatherType.Sandstorm;
+        WeatherTurnsRemaining = sandstormMovementPenaltyTurns;
+
+        CacheOriginalVisuals();
+        ApplySandstormVisuals();
+
+        isEventBlockingTravel = false;
+
+        Debug.Log($"Sandstorm applied. Single-die movement for {WeatherTurnsRemaining} turns.");
+    }
+    
+    private void ApplySandstormVisuals()
+    {
+        if (mainDirectionalLight != null)
+            mainDirectionalLight.intensity = sandstormLightIntensity;
+
+        if (sandstormParticles != null && !sandstormParticles.isPlaying)
+            sandstormParticles.Play();
+        
+        if (rainSkybox != null)
+        {
+            RenderSettings.skybox = rainSkybox;
+            DynamicGI.UpdateEnvironment();
+        }
     }
 }

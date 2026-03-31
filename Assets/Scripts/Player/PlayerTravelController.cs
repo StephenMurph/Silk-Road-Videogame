@@ -227,18 +227,18 @@ public class PlayerTravelController : MonoBehaviour
             reset?.Capture();
 
             int total;
-            bool usedRainPenaltyThisRoll = false;
+            bool usedWeatherPenaltyThisRoll = false;
 
             if (travelEventManager != null && travelEventManager.IsEventBlockingTravel)
             {
                 yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
             }
             
-            if (travelEventManager != null && travelEventManager.RainPenaltyActive)
+            if (travelEventManager != null && travelEventManager.IsWeatherActive)
             {
                 yield return WaitForSingleDie();
                 total = diceAValue;
-                usedRainPenaltyThisRoll = true;
+                usedWeatherPenaltyThisRoll = true;
             }
             else
             {
@@ -331,7 +331,7 @@ public class PlayerTravelController : MonoBehaviour
             while (pendingMoves > 0)
                 yield return null;
 
-            if (usedRainPenaltyThisRoll && travelEventManager != null)
+            if (usedWeatherPenaltyThisRoll && travelEventManager != null)
             {
                 travelEventManager.ConsumeTravelRoll();
 
@@ -406,7 +406,7 @@ public class PlayerTravelController : MonoBehaviour
 
     private void SpawnDicePair()
     {
-        bool singleDieMode = travelEventManager != null && travelEventManager.RainPenaltyActive;
+        bool singleDieMode = travelEventManager != null && travelEventManager.IsWeatherActive;
 
         diceA = Instantiate(dicePrefab).GetComponent<DiceController>();
         if (!diceA)
@@ -669,7 +669,7 @@ public class PlayerTravelController : MonoBehaviour
         HideDestinationHUD();
         
         RefreshMusicForCurrentContext(true);
-        RefreshRainFollowTarget();
+        RefreshWeatherFollowTargets();
 
         Debug.Log($"Entered Town Mode at town {currentTownId}. Map reopened.");
     }
@@ -699,7 +699,7 @@ public class PlayerTravelController : MonoBehaviour
         cameraFocus.position = player.transform.position;
 
         cameraFollow.SetTarget(player.transform, snap);
-        RefreshRainFollowTarget();
+        RefreshWeatherFollowTargets();
         RefreshDestinationHUD();
     }
 
@@ -1140,19 +1140,28 @@ public class PlayerTravelController : MonoBehaviour
         }
     }
     
-    private void RefreshRainFollowTarget()
+    private void RefreshWeatherFollowTargets()
     {
-        if (travelEventManager == null)
-            return;
-
-        RainController rain = FindFirstObjectByType<RainController>();
-        if (rain == null)
-            return;
-
         if (player != null)
-            rain.SetFollowTarget(player.transform);
+        {
+            RainController rain = FindFirstObjectByType<RainController>();
+            if (rain != null)
+                rain.SetFollowTarget(player.transform);
+
+            SandstormController sandstorm = FindFirstObjectByType<SandstormController>();
+            if (sandstorm != null)
+                sandstorm.SetFollowTarget(player.transform);
+        }
         else if (cameraFocus != null)
-            rain.SetFollowTarget(cameraFocus);
+        {
+            RainController rain = FindFirstObjectByType<RainController>();
+            if (rain != null)
+                rain.SetFollowTarget(cameraFocus);
+
+            SandstormController sandstorm = FindFirstObjectByType<SandstormController>();
+            if (sandstorm != null)
+                sandstorm.SetFollowTarget(cameraFocus);
+        }
     }
     
     public Vector3 GetForwardForEvent()
