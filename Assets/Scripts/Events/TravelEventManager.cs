@@ -12,6 +12,7 @@ public class TravelEventManager : MonoBehaviour
         Rain,
         Sandstorm,
         Bandits,
+        WildDogs,
         AbandonedCaravanFood,
         AbandonedCaravanWater
     }
@@ -56,9 +57,15 @@ public class TravelEventManager : MonoBehaviour
     [SerializeField] private float banditSideOffset = 0f;
     [SerializeField] private float banditMinDistanceFromTown = 20f;
     [SerializeField] private EnemyFightController enemyFightController;
+    [SerializeField] private EnemyFightController.EnemyFightConfig banditConfig;
     
     [Header("Bandit Music")]
     [SerializeField] private GameAudioManager.MusicState banditMusicState = GameAudioManager.MusicState.Battle;
+    
+    [Header("Wild Dogs")]
+    [SerializeField] private GameObject wildDogPrefab;
+    [SerializeField] private Sprite wildDogSprite;
+    [SerializeField] private EnemyFightController.EnemyFightConfig wildDogConfig;
     
     private WeatherType activeWeather = WeatherType.None;
     
@@ -164,6 +171,7 @@ public class TravelEventManager : MonoBehaviour
         if (!nearTown)
         {
             AddWeightedEvent(weightedEvents, TravelEventType.Bandits, 3);
+            AddWeightedEvent(weightedEvents, TravelEventType.WildDogs, 3);
         }
 
         AddWeightedEvent(weightedEvents, TravelEventType.AbandonedCaravanFood, 2);
@@ -191,6 +199,10 @@ public class TravelEventManager : MonoBehaviour
 
             case TravelEventType.Bandits:
                 TriggerBanditEvent(travelController);
+                break;
+
+            case TravelEventType.WildDogs:
+                TriggerWildDogEvent(travelController);
                 break;
 
             case TravelEventType.AbandonedCaravanFood:
@@ -472,7 +484,8 @@ public class TravelEventManager : MonoBehaviour
         }
 
         isEventBlockingTravel = true;
-        enemyFightController.StartFight(activeBandit, "Bandit");
+        
+        enemyFightController.StartFight(activeBandit, banditConfig);
     }
 
     private void ClearBandit()
@@ -700,5 +713,94 @@ public class TravelEventManager : MonoBehaviour
             RenderSettings.skybox = rainSkybox;
             DynamicGI.UpdateEnvironment();
         }
+    }
+    
+    private void TriggerWildDogEvent(PlayerTravelController travelController)
+    {
+        isEventBlockingTravel = true;
+        StartCoroutine(SpawnWildDogAndShowPopup(travelController));
+    }
+    
+    private IEnumerator SpawnWildDogAndShowPopup(PlayerTravelController travelController)
+    {
+        Vector3 spawnPos = travelController.GetBanditSpawnPoint(banditSpawnDistanceAhead, banditSideOffset);
+
+        if (activeBandit != null)
+            Destroy(activeBandit);
+
+        activeBandit = Instantiate(wildDogPrefab);
+        activeBandit.name = "WildDogEventActor";
+
+        Vector3 lookDir = travelController.GetForwardForEvent();
+        lookDir.y = 0f;
+
+        if (lookDir.sqrMagnitude > 0.001f)
+            activeBandit.transform.rotation = Quaternion.LookRotation(-lookDir.normalized, Vector3.up);
+
+        SetBanditPhysicsEnabled(activeBandit, false);
+
+        BanditEventActor actor = activeBandit.GetComponent<BanditEventActor>();
+        if (actor == null)
+            actor = activeBandit.AddComponent<BanditEventActor>();
+        
+        StartBanditMusic();
+
+        yield return actor.DropFromSky(spawnPos);
+
+        yield return travelController.EnterCombatFormation(activeBandit.transform);
+
+        SetBanditPhysicsEnabled(activeBandit, true);
+
+        yield return new WaitForSeconds(0.5f);
+
+        eventPopupUI.ShowChoiceEvent(
+            "Wild Dogs",
+            "A wild dog attacks you.",
+            wildDogSprite,
+            "Throw them food",
+            HandleDogGiveFood,
+            "Fight",
+            HandleDogFight
+        );
+        
+        RunState runState = FindFirstObjectByType<RunState>();
+        bool hasFood = runState != null && runState.resources != null && runState.resources.food > 0;
+
+        eventPopupUI.SetOption1Interactable(hasFood);
+        eventPopupUI.SetOption2Interactable(true);
+    }
+    
+    private void HandleDogGiveFood()
+    {
+        int foodLoss = rng.Next(10, 30);
+
+        RunState runState = FindFirstObjectByType<RunState>();
+        int actual = 0;
+
+        if (runState != null)
+            actual = runState.resources.ConsumeFood(foodLoss);
+
+        eventPopupUI.ShowSimpleEvent(
+            "Wild Dogs",
+            $"The dogs took {actual} food.",
+            wildDogSprite,
+            "OK",
+            () =>
+            {
+                ClearBandit();
+                isEventBlockingTravel = false;
+            }
+        );
+    }
+    
+    private void HandleDogFight()
+    {
+        if (activeBandit == null || enemyFightController == null)
+        {
+            isEventBlockingTravel = false;
+            return;
+        }
+
+        enemyFightController.StartFight(activeBandit, wildDogConfig);
     }
 }

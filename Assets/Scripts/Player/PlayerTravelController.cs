@@ -734,6 +734,9 @@ public class PlayerTravelController : MonoBehaviour
     
     private IEnumerator WaitForDicePair()
     {
+        if (GameOverManager.IsGameOver)
+            yield break;
+        
         if (travelEventManager != null)
             yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
 
@@ -741,8 +744,7 @@ public class PlayerTravelController : MonoBehaviour
         diceBReady = false;
 
         SpawnDicePair();
-
-        // Wait until the player has actually thrown both dice.
+        
         yield return new WaitUntil(() =>
             diceA != null &&
             diceB != null &&
@@ -755,6 +757,9 @@ public class PlayerTravelController : MonoBehaviour
 
         while (!diceAReady || !diceBReady)
         {
+            if (GameOverManager.IsGameOver)
+                yield break;
+            
             timer += Time.deltaTime;
 
             if (!forced && timer >= diceTimeoutSeconds)
@@ -1104,6 +1109,9 @@ public class PlayerTravelController : MonoBehaviour
     
     private IEnumerator WaitForSingleDie()
     {
+        if (GameOverManager.IsGameOver)
+            yield break;
+        
         if (travelEventManager != null)
             yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
 
@@ -1111,7 +1119,6 @@ public class PlayerTravelController : MonoBehaviour
 
         SpawnDicePair();
 
-        // Wait until the player has actually thrown the die.
         yield return new WaitUntil(() =>
             diceA != null &&
             diceA.HasBeenThrown

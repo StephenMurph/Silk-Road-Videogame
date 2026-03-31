@@ -51,6 +51,32 @@ public class EnemyFightController : MonoBehaviour
     public bool FightActive => fightActive;
     public GameObject ActiveEnemy => activeEnemy;
     public int CurrentEnemyHp => currentEnemyHp;
+    
+    [System.Serializable]
+    public class EnemyFightConfig
+    {
+        public string enemyName = "Enemy";
+
+        [Header("Health")]
+        public int minHp = 20;
+        public int maxHp = 30;
+
+        [Header("Rewards")]
+        public bool rewardGold = true;
+        public Vector2Int goldRewardRange = new Vector2Int(30, 80);
+
+        public bool rewardFood = false;
+        public Vector2Int foodRewardRange = new Vector2Int(20, 50);
+
+        [Header("Audio")]
+        public AudioClip hitSound;
+        public AudioClip[] hopLandClips;
+
+        [Header("Popup")]
+        public Sprite victorySprite;
+    }
+    
+    private EnemyFightConfig currentConfig;
 
     private void Awake()
     {
@@ -78,24 +104,26 @@ public class EnemyFightController : MonoBehaviour
     }
 
 
-    public void StartFight(GameObject enemy, string enemyName)
+    public void StartFight(GameObject enemy, EnemyFightConfig config)
     {
-        if (enemy == null)
+        if (enemy == null || config == null)
         {
-            Debug.LogError("EnemyFightController: StartFight called with null enemy.");
+            Debug.LogError("StartFight missing data.");
             return;
         }
 
+        currentConfig = config;
         activeEnemy = enemy;
-        currentEnemyHp = Random.Range(minEnemyHp, maxEnemyHp + 1);
+
+        currentEnemyHp = Random.Range(config.minHp, config.maxHp + 1);
         fightActive = true;
 
         BuildPartyHpTable();
         CacheCombatHomes();
         RefreshPartyUI();
-        
+
         if (enemyHealthBar)
-            enemyHealthBar.ShowEnemy(enemyName, currentEnemyHp);
+            enemyHealthBar.ShowEnemy(config.enemyName, currentEnemyHp);
 
         StartCoroutine(CombatLoop());
     }
@@ -122,6 +150,9 @@ public class EnemyFightController : MonoBehaviour
     {
         while (fightActive && activeEnemy != null)
         {
+            if (GameOverManager.IsGameOver)
+                yield break;
+            
             int playerDamage = 0;
             yield return WaitForPlayerDiceRoll(v => playerDamage = v);
 
@@ -206,7 +237,7 @@ public class EnemyFightController : MonoBehaviour
 
             RefreshPartyUI();
 
-            yield return ProcessCombatDeathsAfterHit("Your caravan leader was slain by bandits.");
+            yield return ProcessCombatDeathsAfterHit("Your caravan leader was slain.");
 
             if (!fightActive)
                 yield break;
@@ -223,6 +254,9 @@ public class EnemyFightController : MonoBehaviour
 
     private IEnumerator WaitForPlayerDiceRoll(System.Action<int> onRolled)
     {
+        if (GameOverManager.IsGameOver)
+            yield break;
+        
         if (travelController == null || travelController.DicePrefab == null)
             yield break;
         
@@ -300,7 +334,8 @@ public class EnemyFightController : MonoBehaviour
 
         yield return ArcHop(attacker, startPos, hitPos, faceRot, strikeTime, strikeHopHeight, true);
 
-        PlaySwordHitSound();
+        bool isEnemyAttacking = attacker == activeEnemy.transform;
+        PlayHitSound(isEnemyAttacking);
 
         target.localScale = new Vector3(
             targetScale.x * 1.25f,
@@ -318,6 +353,29 @@ public class EnemyFightController : MonoBehaviour
         attacker.position = startPos;
         attacker.rotation = startRot;
         target.localScale = targetScale;
+    }
+    
+    private void PlayHitSound(bool isEnemyAttacking)
+    {
+        if (sfxSource == null)
+            return;
+        
+        if (!isEnemyAttacking)
+        {
+            if (swordHitClip != null)
+                sfxSource.PlayOneShot(swordHitClip);
+
+            return;
+        }
+        
+        if (currentConfig != null && currentConfig.hitSound != null)
+        {
+            sfxSource.PlayOneShot(currentConfig.hitSound);
+        }
+        else if (swordHitClip != null)
+        {
+            sfxSource.PlayOneShot(swordHitClip);
+        }
     }
     
     private IEnumerator ArcHop(
@@ -410,10 +468,12 @@ public class EnemyFightController : MonoBehaviour
 
     private void PlaySwordHitSound()
     {
-        if (sfxSource == null || swordHitClip == null)
-            return;
+        if (sfxSource == null) return;
 
-        sfxSource.PlayOneShot(swordHitClip);
+        if (currentConfig != null && currentConfig.hitSound != null)
+            sfxSource.PlayOneShot(currentConfig.hitSound);
+        else if (swordHitClip != null)
+            sfxSource.PlayOneShot(swordHitClip);
     }
 
     private IEnumerator ShrinkAndDestroy(GameObject go, float duration)
@@ -440,24 +500,49 @@ public class EnemyFightController : MonoBehaviour
     {
         Debug.Log("Enemy defeated.");
 
-        int goldReward = Random.Range(30, 81);
-        
         RunState runState = FindFirstObjectByType<RunState>();
-        if (runState != null)
-            runState.resources.gold += goldReward;
 
-        TravelEventManager mgr = FindFirstObjectByType<TravelEventManager>();
-        if (mgr != null)
+        if (currentConfig != null && runState != null)
         {
-            mgr.ShowBanditVictoryPopup(goldReward, () =>
+            if (currentConfig.rewardGold)
             {
-                EndFight(true);
-            });
+                int gold = Random.Range(
+                    currentConfig.goldRewardRange.x,
+                    currentConfig.goldRewardRange.y + 1
+                );
+
+                runState.resources.gold += gold;
+
+                ShowVictoryPopup($"You received {gold} gold.");
+            }
+            else if (currentConfig.rewardFood)
+            {
+                int food = Random.Range(
+                    currentConfig.foodRewardRange.x,
+                    currentConfig.foodRewardRange.y + 1
+                );
+
+                runState.resources.AddFood(food);
+
+                ShowVictoryPopup($"You gained {food} food.");
+            }
         }
-        else
-        {
-            EndFight(true);
-        }
+
+        EndFight(true);
+    }
+    
+    private void ShowVictoryPopup(string text)
+    {
+        if (eventPopupUI == null)
+            return;
+
+        eventPopupUI.ShowSimpleEvent(
+            "You won",
+            text,
+            currentConfig != null ? currentConfig.victorySprite : skullSprite,
+            "OK",
+            null
+        );
     }
 
     private void LoseFight()
@@ -687,21 +772,20 @@ public class EnemyFightController : MonoBehaviour
     
     private void PlayAttackHopLandSound()
     {
-        if (sfxSource == null)
+        if (sfxSource == null) return;
+
+        AudioClip[] clips = currentConfig != null && currentConfig.hopLandClips != null && currentConfig.hopLandClips.Length > 0
+            ? currentConfig.hopLandClips
+            : attackHopLandClips;
+
+        if (clips == null || clips.Length == 0)
             return;
 
-        if (attackHopLandClips == null || attackHopLandClips.Length == 0)
-            return;
+        int index = Random.Range(0, clips.Length);
+        AudioClip clip = clips[index];
 
-        int index = Random.Range(0, attackHopLandClips.Length);
-        AudioClip clip = attackHopLandClips[index];
-        if (clip == null)
-            return;
-
-        float minPitch = Mathf.Min(attackHopPitchRange.x, attackHopPitchRange.y);
-        float maxPitch = Mathf.Max(attackHopPitchRange.x, attackHopPitchRange.y);
-
-        sfxSource.pitch = Random.Range(minPitch, maxPitch);
+        float pitch = Random.Range(attackHopPitchRange.x, attackHopPitchRange.y);
+        sfxSource.pitch = pitch;
         sfxSource.PlayOneShot(clip, attackHopLandVolume);
         sfxSource.pitch = 1f;
     }

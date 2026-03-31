@@ -5,14 +5,20 @@ public class GameOverManager : MonoBehaviour
 {
     [SerializeField] private EventPopupUI eventPopupUI;
     [SerializeField] private Sprite skullSprite;
-    [SerializeField] private string mainMenuSceneName = "MainMenu";
+    [SerializeField] private string mainMenuSceneName = "MainMenuScene";
 
     private bool gameOverTriggered;
+    
+    public static bool IsGameOver => Instance != null && Instance.gameOverTriggered;
 
     public bool IsGameOverTriggered => gameOverTriggered;
 
+    public static GameOverManager Instance { get; private set; }
+
     private void Awake()
     {
+        Instance = this;
+
         if (!eventPopupUI)
             eventPopupUI = FindFirstObjectByType<EventPopupUI>(FindObjectsInactive.Include);
     }
@@ -23,11 +29,14 @@ public class GameOverManager : MonoBehaviour
             return;
 
         gameOverTriggered = true;
-        Time.timeScale = 0f;
 
         if (GameAudioManager.Instance != null)
             GameAudioManager.Instance.PlayMusic(GameAudioManager.MusicState.GameOver);
+        
+        Time.timeScale = 0f;
 
+        DestroyAllDice();
+        
         if (eventPopupUI == null)
         {
             Debug.LogError("GameOverManager: No EventPopupUI found.");
@@ -47,5 +56,16 @@ public class GameOverManager : MonoBehaviour
                 SceneManager.LoadScene(mainMenuSceneName);
             }
         );
+    }
+    
+    private void DestroyAllDice()
+    {
+        var dice = FindObjectsByType<DiceController>(FindObjectsSortMode.None);
+
+        foreach (var d in dice)
+        {
+            if (d != null)
+                Destroy(d.gameObject);
+        }
     }
 }
