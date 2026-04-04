@@ -10,7 +10,8 @@ public class TownManager : MonoBehaviour
     public Terrain terrain;                
 
     [Header("Towns")]
-    public GameObject housePrefab;
+    public GameObject grasslandHousePrefab;
+    public GameObject desertHousePrefab;
     public int townCount = 8;
     public int townSeed = 1234;
 
@@ -149,9 +150,9 @@ public class TownManager : MonoBehaviour
         if (!terrainManager) terrainManager = GetComponent<TerrainManager>();
         if (!terrain) terrain = terrainManager ? terrainManager.GetComponent<Terrain>() : null;
 
-        if (!terrainManager || !terrain || !housePrefab)
+        if (!terrainManager || !terrain || !grasslandHousePrefab || !desertHousePrefab)
         {
-            Debug.LogError("TownManager: missing refs (terrainManager/terrain/housePrefab).");
+            Debug.LogError("TownManager: missing refs (terrainManager/terrain/grasslandHousePrefab/desertHousePrefab).");
             return;
         }
 
@@ -159,6 +160,13 @@ public class TownManager : MonoBehaviour
         RefreshAllTownMarkets(0);
 
         Debug.Log($"TownManager: spawned {towns.Count} towns.");
+    }
+    
+    private GameObject GetHousePrefabForBiome(TownBiomeType biomeType)
+    {
+        return biomeType == TownBiomeType.Desert
+            ? desertHousePrefab
+            : grasslandHousePrefab;
     }
 
     void SpawnTowns(TerrainData data)
@@ -257,10 +265,18 @@ public class TownManager : MonoBehaviour
             float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
             Vector3 world = new Vector3(nx * data.size.x, h01 * data.size.y, nz * data.size.z) + terrain.transform.position;
 
-            var goTown = Instantiate(housePrefab, world, Quaternion.identity, root);
+            TownBiomeType biomeType = GetTownBiomeType(nx, nz);
+            GameObject prefab = GetHousePrefabForBiome(biomeType);
+
+            if (prefab == null)
+            {
+                Debug.LogError($"TownManager: Missing house prefab for biome {biomeType}.");
+                return;
+            }
+
+            var goTown = Instantiate(prefab, world, Quaternion.identity, root);
             goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
 
-            TownBiomeType biomeType = GetTownBiomeType(nx, nz);
             string townName = GetRandomTownName(biomeType, rng, usedTownNames);
             usedTownNames.Add(townName);
 
@@ -470,10 +486,18 @@ public class TownManager : MonoBehaviour
             if (!RespectsSpacing(nx, nz)) continue;
 
             Vector3 world = new Vector3(nx * data.size.x, h01 * data.size.y, nz * data.size.z) + terrain.transform.position;
-            var goTown = Instantiate(housePrefab, world, Quaternion.identity, root);
-            goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
 
             TownBiomeType biomeType = GetTownBiomeType(nx, nz);
+            GameObject prefab = GetHousePrefabForBiome(biomeType);
+
+            if (prefab == null)
+            {
+                Debug.LogError($"TownManager: Missing house prefab for biome {biomeType}.");
+                continue;
+            }
+
+            var goTown = Instantiate(prefab, world, Quaternion.identity, root);
+            goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
             string townName = GetRandomTownName(biomeType, rng, usedTownNames);
             usedTownNames.Add(townName);
 
