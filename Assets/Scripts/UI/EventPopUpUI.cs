@@ -25,6 +25,7 @@ public class EventPopupUI : MonoBehaviour
     [SerializeField] private GameObject option2Root;
     [SerializeField] private Button option2Button;
     [SerializeField] private TMP_Text option2Text;
+    
 
     private Action onOkPressed;
     private Action onOption1Pressed;
@@ -157,5 +158,17 @@ public class EventPopupUI : MonoBehaviour
         onOkPressed = null;
         onOption2Pressed = null;
         callback?.Invoke();
+    }
+    
+    public void SetOption1Interactable(bool interactable)
+    {
+        if (option1Button != null)
+            option1Button.interactable = interactable;
+    }
+
+    public void SetOption2Interactable(bool interactable)
+    {
+        if (option2Button != null)
+            option2Button.interactable = interactable;
     }
 }

@@ -40,11 +40,17 @@ public class TownDotUI : MonoBehaviour,
     {
         if (selectable)
             image.color = hoverColor;
+
+        if (map != null)
+            map.ShowTownTooltip(townId, Rect.anchoredPosition);
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
         image.color = selectable ? normalColor : disabledColor;
+
+        if (map != null)
+            map.HideTownTooltip();
     }
     
     public void SetCurrentTown(bool isCurrent)

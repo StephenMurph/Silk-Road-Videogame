@@ -230,8 +230,7 @@ public class TerrainRoadGeneratorComponent : MonoBehaviour
             degree[a]++;
             degree[b]++;
         }
-
-        // 1) MST so every town is connected
+        
         int added = 0;
         for (int i = 0; i < allCandidates.Count && added < townsNZ.Count - 1; i++)
         {
@@ -243,8 +242,7 @@ public class TerrainRoadGeneratorComponent : MonoBehaviour
             Union(c.a, c.b);
             added++;
         }
-
-        // 2) each town gets at least one short local link if possible
+        
         for (int i = 0; i < townsNZ.Count; i++)
         {
             if (degree[i] > 0)
@@ -264,8 +262,7 @@ public class TerrainRoadGeneratorComponent : MonoBehaviour
                 break;
             }
         }
-
-        // 3) optional extra short links
+        
         if (addExtraLinks && extraLinksToAdd > 0)
         {
             var rng = new System.Random(seed);
@@ -282,15 +279,13 @@ public class TerrainRoadGeneratorComponent : MonoBehaviour
 
                 extraPool.Add(c);
             }
-
-            // shuffle a little among short edges so every map is not too identical
+            
             for (int i = 0; i < extraPool.Count; i++)
             {
                 int swap = rng.Next(i, extraPool.Count);
                 (extraPool[i], extraPool[swap]) = (extraPool[swap], extraPool[i]);
             }
-
-            // then sort mostly by shortness
+            
             extraPool.Sort((x, y) => x.distWorld.CompareTo(y.distWorld));
 
             int extrasAdded = 0;
@@ -409,8 +404,7 @@ public static class TerrainRoadGenerator
         int layers = data.alphamapLayers;
 
         var maps = data.GetAlphamaps(0, 0, aw, ah);
-
-        // wipe only road/trail layers
+        
         for (int z = 0; z < ah; z++)
         {
             for (int x = 0; x < aw; x++)
@@ -443,7 +437,6 @@ public static class TerrainRoadGenerator
 
             if (path == null || path.Count < 2)
             {
-                // hard fallback: direct segment so towns are never left disconnected
                 path = new List<Vector2> { edge.aNZ, edge.bNZ };
             }
 
@@ -799,11 +792,9 @@ public static class TerrainRoadGenerator
 
                 if (dist <= halfWidthWorld)
                 {
-                    // wipe all layers
                     for (int l = 0; l < layers; l++)
                         maps[z, x, l] = 0f;
-
-                    // set ONLY road layer
+                    
                     maps[z, x, targetLayer] = 1f;
 
                     if (roadMask01 != null)

@@ -54,6 +54,20 @@ public class TownUIController : MonoBehaviour
     [SerializeField] private Button sellConfirmButton;
     [SerializeField] private TMP_Text sellTotalText;
     [SerializeField] private TMP_Text sellGoldAfterText;
+    [SerializeField] private SellCargoSlotUI sellFoodSlot;
+    [SerializeField] private SellCargoSlotUI sellWaterSlot;
+    [SerializeField] private int[] selectedSupplySellQuantities = new int[2];
+    
+    [Header("Advice Panel")]
+    [SerializeField] private GameObject advicePanel;
+    [SerializeField] private TMP_Text adviceText;
+    [SerializeField] private Button adviceBuyButton;
+    [SerializeField] private TMP_Text adviceBuyButtonText;
+    [SerializeField] private int adviceCostGold = 50;
+    [SerializeField] private TMP_Text adviceGoldText;
+    [SerializeField] private Button adviceBackButton;
+
+    private readonly HashSet<int> purchasedAdviceTownIndices = new();
     
     private readonly int[] selectedSellQuantities = new int[8];
     
@@ -174,7 +188,16 @@ public class TownUIController : MonoBehaviour
         currentTown = town;
         
         int townIndex = townSystem != null ? townSystem.towns.IndexOf(town) : -1;
-        marketState?.OnTownArrival(townSystem, townIndex);
+
+        if (!GameLaunchState.SuppressTownArrivalEffects)
+            marketState?.OnTownArrival(townSystem, townIndex);
+        else
+            GameLaunchState.SuppressTownArrivalEffects = false;
+        
+        var saveManager = FindFirstObjectByType<GameSaveManager>();
+        if (saveManager != null && townIndex >= 0)
+            saveManager.AutoSaveAtTown(townIndex);
+
 
         if (townNameText != null)
             townNameText.text = string.IsNullOrWhiteSpace(town.townName) ? "Unknown Town" : town.townName;
@@ -1064,6 +1087,9 @@ public class TownUIController : MonoBehaviour
     {
         for (int i = 0; i < selectedSellQuantities.Length; i++)
             selectedSellQuantities[i] = 0;
+
+        for (int i = 0; i < selectedSupplySellQuantities.Length; i++)
+            selectedSupplySellQuantities[i] = 0;
     }
 
     private void RefreshSellPanel()
@@ -1096,7 +1122,12 @@ public class TownUIController : MonoBehaviour
 
             RefreshSellCargoSlot(row.slotB, slotB, slotIndex);
             slotIndex++;
+            
         }
+        
+        
+        RefreshSupplySellSlot(sellFoodSlot, true);
+        RefreshSupplySellSlot(sellWaterSlot, false);
 
         RefreshSellTotals();
     }
@@ -1165,23 +1196,27 @@ public class TownUIController : MonoBehaviour
 
     private int GetSelectedSellTotalValue()
     {
-        if (runState == null || runState.party == null || runState.party.members == null)
-            return 0;
-
         int total = 0;
-        int slotIndex = 0;
 
-        for (int i = 0; i < runState.party.members.Count; i++)
+        if (runState != null && runState.party != null && runState.party.members != null)
         {
-            var member = runState.party.members[i];
-            if (member == null) continue;
+            int slotIndex = 0;
 
-            total += GetSellValueForSlot(member.slotA, slotIndex);
-            slotIndex++;
+            for (int i = 0; i < runState.party.members.Count; i++)
+            {
+                var member = runState.party.members[i];
+                if (member == null) continue;
 
-            total += GetSellValueForSlot(member.slotB, slotIndex);
-            slotIndex++;
+                total += GetSellValueForSlot(member.slotA, slotIndex);
+                slotIndex++;
+
+                total += GetSellValueForSlot(member.slotB, slotIndex);
+                slotIndex++;
+            }
         }
+
+        total += selectedSupplySellQuantities[0] * GetFoodSellPrice();
+        total += selectedSupplySellQuantities[1] * GetWaterSellPrice();
 
         return total;
     }
@@ -1278,6 +1313,15 @@ public class TownUIController : MonoBehaviour
             slotIndex++;
         }
 
+        int foodToSell = Mathf.Clamp(selectedSupplySellQuantities[0], 0, runState.resources.food);
+        int waterToSell = Mathf.Clamp(selectedSupplySellQuantities[1], 0, runState.resources.water);
+
+        if (foodToSell > 0)
+            runState.resources.ConsumeFood(foodToSell);
+
+        if (waterToSell > 0)
+            runState.resources.ConsumeWater(waterToSell);
+
         runState.resources.AddGold(totalSellValue);
 
         ClearSellSelections();
@@ -1320,5 +1364,211 @@ public class TownUIController : MonoBehaviour
     public void DecreaseSellSlot5() => ChangeSellQuantity(5, -1);
     public void DecreaseSellSlot6() => ChangeSellQuantity(6, -1);
     public void DecreaseSellSlot7() => ChangeSellQuantity(7, -1);
+    
+    public void OpenAdvice()
+    {
+        mainMenuRoot.SetActive(false);
+
+        if (advicePanel != null)
+            advicePanel.SetActive(true);
+
+        RefreshAdvicePanel();
+    }
+
+    public void BackFromAdvice()
+    {
+        if (advicePanel != null)
+            advicePanel.SetActive(false);
+
+        mainMenuRoot.SetActive(true);
+    }
+
+    private void RefreshAdvicePanel()
+    {
+        int townIndex = currentTown != null && townSystem != null
+            ? townSystem.towns.IndexOf(currentTown)
+            : -1;
+
+        bool alreadyBought = townIndex >= 0 && purchasedAdviceTownIndices.Contains(townIndex);
+        bool canAfford = runState != null && runState.resources != null && runState.resources.gold >= adviceCostGold;
+
+        if (adviceGoldText != null)
+        {
+            int gold = runState != null && runState.resources != null ? runState.resources.gold : 0;
+            adviceGoldText.text = $"{gold}";
+        }
+
+        if (adviceText != null)
+        {
+            if (!alreadyBought && string.IsNullOrWhiteSpace(adviceText.text))
+                adviceText.text = "A local information broker offers trade advice about a neighboring town.";
+        }
+
+        if (adviceBuyButton != null)
+            adviceBuyButton.interactable = !alreadyBought && canAfford;
+
+        if (adviceBuyButtonText != null)
+        {
+            if (alreadyBought)
+                adviceBuyButtonText.text = "Advice Purchased";
+            else if (!canAfford)
+                adviceBuyButtonText.text = $"Need {adviceCostGold} Gold";
+            else
+                adviceBuyButtonText.text = $"Pay {adviceCostGold} Gold";
+        }
+    }
+
+    public void BuyAdvice()
+    {
+        if (currentTown == null || townSystem == null || runState == null || runState.resources == null)
+            return;
+
+        int currentTownIndex = townSystem.towns.IndexOf(currentTown);
+        if (currentTownIndex < 0)
+            return;
+
+        if (purchasedAdviceTownIndices.Contains(currentTownIndex))
+        {
+            RefreshAdvicePanel();
+            return;
+        }
+
+        if (runState.resources.gold < adviceCostGold)
+        {
+            RefreshAdvicePanel();
+            return;
+        }
+
+        if (!runState.resources.SpendGold(adviceCostGold))
+        {
+            RefreshAdvicePanel();
+            return;
+        }
+
+        purchasedAdviceTownIndices.Add(currentTownIndex);
+
+        string advice = BuildTradeAdviceForTown(currentTownIndex);
+
+        if (adviceText != null)
+            adviceText.text = advice;
+
+        resourceHUD?.Refresh();
+        RefreshAdvicePanel();
+    }
+
+    private string BuildTradeAdviceForTown(int currentTownIndex)
+    {
+        if (townSystem == null)
+            return "The broker has nothing useful to say.";
+
+        var roadGenerator = FindFirstObjectByType<TerrainRoadGeneratorComponent>();
+        if (roadGenerator == null || roadGenerator.adjacency == null)
+            return "The broker cannot determine any nearby routes.";
+
+        if (!roadGenerator.adjacency.TryGetValue(currentTownIndex, out var neighbors) || neighbors == null || neighbors.Count == 0)
+            return "There are no neighboring towns to gather rumors from.";
+
+        int neighborIndex = neighbors[UnityEngine.Random.Range(0, neighbors.Count)];
+        if (neighborIndex < 0 || neighborIndex >= townSystem.towns.Count)
+            return "The broker's information seems unreliable.";
+
+        var neighborTown = townSystem.towns[neighborIndex];
+        if (neighborTown == null || neighborTown.marketData == null || neighborTown.marketData.sellPrices == null || neighborTown.marketData.sellPrices.Length == 0)
+            return $"The broker says little of value about {neighborTown?.townName ?? "that town"}.";
+
+        TownManager.SellPriceData best = neighborTown.marketData.sellPrices[0];
+
+        for (int i = 1; i < neighborTown.marketData.sellPrices.Length; i++)
+        {
+            var candidate = neighborTown.marketData.sellPrices[i];
+            if (candidate != null && candidate.price > best.price)
+                best = candidate;
+        }
+
+        if (best == null || best.type == TradeGoodType.None)
+            return $"The broker has no useful trade rumor about {neighborTown.townName}.";
+
+        return $"A broker whispers that {best.type} sells well in {neighborTown.townName}. Traders there are paying around {best.price} gold.";
+    }
+    
+    private int GetFoodSellPrice()
+    {
+        if (currentTown == null || currentTown.marketData == null)
+            return 1;
+    
+        return Mathf.Max(1, currentTown.marketData.foodPrice - 1);
+    }
+    
+    private int GetWaterSellPrice()
+    {
+        if (currentTown == null || currentTown.marketData == null)
+            return 1;
+    
+        return Mathf.Max(1, currentTown.marketData.waterPrice - 1);
+    }
+    
+    private void RefreshSupplySellSlot(SellCargoSlotUI ui, bool isFood)
+    {
+        if (ui == null)
+            return;
+
+        if (ui.root != null)
+            ui.root.SetActive(true);
+
+        int ownedQuantity = 0;
+        int selectedQuantity = 0;
+        int price = 0;
+
+        if (runState != null && runState.resources != null)
+        {
+            ownedQuantity = isFood ? runState.resources.food : runState.resources.water;
+            selectedQuantity = selectedSupplySellQuantities[isFood ? 0 : 1];
+            selectedQuantity = Mathf.Clamp(selectedQuantity, 0, ownedQuantity);
+            selectedSupplySellQuantities[isFood ? 0 : 1] = selectedQuantity;
+            price = isFood ? GetFoodSellPrice() : GetWaterSellPrice();
+        }
+
+        if (ui.iconImage != null)
+        {
+            ui.iconImage.enabled = false;
+            ui.iconImage.sprite = null;
+        }
+
+        if (ui.sellQuantityText != null)
+            ui.sellQuantityText.text = selectedQuantity.ToString();
+
+        if (ui.sellPriceText != null)
+            ui.sellPriceText.text = price.ToString();
+
+        if (ui.minusButton != null)
+            ui.minusButton.interactable = selectedQuantity > 0;
+
+        if (ui.plusButton != null)
+            ui.plusButton.interactable = selectedQuantity < ownedQuantity;
+    }
+    
+    public void IncreaseSellFood() => ChangeSupplySellQuantity(true, +1);
+    public void DecreaseSellFood() => ChangeSupplySellQuantity(true, -1);
+
+    public void IncreaseSellWater() => ChangeSupplySellQuantity(false, +1);
+    public void DecreaseSellWater() => ChangeSupplySellQuantity(false, -1);
+    
+    private void ChangeSupplySellQuantity(bool isFood, int delta)
+    {
+        if (runState == null || runState.resources == null)
+            return;
+
+        int index = isFood ? 0 : 1;
+        int ownedQuantity = isFood ? runState.resources.food : runState.resources.water;
+
+        int current = selectedSupplySellQuantities[index];
+        current += delta;
+        current = Mathf.Clamp(current, 0, ownedQuantity);
+
+        selectedSupplySellQuantities[index] = current;
+
+        RefreshSellPanel();
+    }
+    
     
 }

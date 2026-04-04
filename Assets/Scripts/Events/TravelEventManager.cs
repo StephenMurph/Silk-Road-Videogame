@@ -10,34 +10,77 @@ public class TravelEventManager : MonoBehaviour
     {
         None,
         Rain,
-        Bandits
+        Sandstorm,
+        Bandits,
+        WildDogs,
+        Sickness,
+        AbandonedCaravanFood,
+        AbandonedCaravanWater
     }
 
+    private enum WeatherType
+    {
+        None,
+        Rain,
+        Sandstorm
+    }
+    
     [Header("Popup")]
     [SerializeField] private EventPopupUI eventPopupUI;
     [SerializeField] private Sprite rainSprite;
+    [SerializeField] private Sprite sandstormSprite;
     [SerializeField] private Sprite banditSprite;
-
+    [SerializeField] private Sprite moneySprite;
+    [SerializeField] private Sprite foodSprite;
+    [SerializeField] private Sprite waterSprite;
+    [SerializeField] private Sprite skullSprite;
+    
     [Header("Random Events")]
     [SerializeField, Range(0f, 1f)] private float eventChancePerMove = 0.15f;
     [SerializeField] private int eventSeed = 12345;
 
-    [Header("Rain")]
+    [Header("Weather")]
     [SerializeField] private int rainMovementPenaltyTurns = 3;
-
+    [SerializeField] private int sandstormMovementPenaltyTurns = 3;
+    
     [Header("Rain Visuals")]
     [SerializeField] private Material rainSkybox;
     [SerializeField] private Light mainDirectionalLight;
     [SerializeField] private float rainLightIntensity = 1f;
     [SerializeField] private RainController rainController;
+    
+    [Header("Sandstorm Visuals")]
+    [SerializeField] private ParticleSystem sandstormParticles;
+    [SerializeField] private float sandstormLightIntensity = 1f;
 
     [Header("Bandits")]
     [SerializeField] private GameObject banditPrefab;
     [SerializeField] private float banditSpawnDistanceAhead = 6f;
     [SerializeField] private float banditSideOffset = 0f;
+    [SerializeField] private float banditMinDistanceFromTown = 20f;
+    [SerializeField] private EnemyFightController enemyFightController;
+    [SerializeField] private EnemyFightController.EnemyFightConfig banditConfig;
+    
+    [Header("Bandit Music")]
+    [SerializeField] private GameAudioManager.MusicState banditMusicState = GameAudioManager.MusicState.Battle;
+    
+    [Header("Wild Dogs")]
+    [SerializeField] private GameObject wildDogPrefab;
+    [SerializeField] private Sprite wildDogSprite;
+    [SerializeField] private EnemyFightController.EnemyFightConfig wildDogConfig;
+    
+    private WeatherType activeWeather = WeatherType.None;
+    
+    private TravelEventType lastTriggeredEvent = TravelEventType.None;
 
-    public int RainTurnsRemaining { get; private set; }
-    public bool RainPenaltyActive => RainTurnsRemaining > 0;
+    public bool IsWeatherActive => WeatherTurnsRemaining > 0;
+    public bool RainPenaltyActive => activeWeather == WeatherType.Rain && WeatherTurnsRemaining > 0;
+    public bool SandstormPenaltyActive => activeWeather == WeatherType.Sandstorm && WeatherTurnsRemaining > 0;
+
+    public int WeatherTurnsRemaining { get; private set; }
+
+    private GameAudioManager.MusicState previousMusicState;
+    private bool hasStoredMusic;
     public bool EventPopupShowing => eventPopupUI != null && eventPopupUI.IsShowing;
 
     private System.Random rng;
@@ -47,9 +90,15 @@ public class TravelEventManager : MonoBehaviour
     private bool visualsCached;
 
     private GameObject activeBandit;
+    
+    private bool isEventBlockingTravel;
+    public bool IsEventBlockingTravel => isEventBlockingTravel;
 
     private void Awake()
     {
+        if (!enemyFightController)
+            enemyFightController = FindFirstObjectByType<EnemyFightController>();
+        
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
@@ -64,7 +113,9 @@ public class TravelEventManager : MonoBehaviour
         if (!rainController)
             rainController = FindFirstObjectByType<RainController>();
 
-        rng = new System.Random(eventSeed);
+        var terrainManager = FindFirstObjectByType<TerrainManager>();
+        int seedBase = terrainManager != null ? terrainManager.seed : eventSeed;
+        rng = new System.Random(seedBase ^ eventSeed);
     }
 
     public bool TryTriggerRandomEventAtPosition(
@@ -103,35 +154,78 @@ public class TravelEventManager : MonoBehaviour
 
         float desert = terrainManager.SendMessageDesertMask(nx, nz);
         bool isGrassland = desert < 0.35f;
+        bool isDesert = desert >= 0.35f;
 
-        if (isGrassland)
+        List<TravelEventType> weightedEvents = new List<TravelEventType>();
+
+        if (isGrassland && !IsWeatherActive)
         {
-            validEvents.Add(TravelEventType.Rain);
-            validEvents.Add(TravelEventType.Bandits);
+            AddWeightedEvent(weightedEvents, TravelEventType.Rain, 3);
         }
 
-        if (validEvents.Count == 0)
+        if (isDesert && !IsWeatherActive)
+        {
+            AddWeightedEvent(weightedEvents, TravelEventType.Sandstorm, 3);
+        }
+        
+        bool nearTown = IsNearAnyTown(worldPos, banditMinDistanceFromTown, terrain);
+
+        if (!nearTown)
+        {
+            AddWeightedEvent(weightedEvents, TravelEventType.Bandits, 3);
+            AddWeightedEvent(weightedEvents, TravelEventType.WildDogs, 3);
+        }
+
+        AddWeightedEvent(weightedEvents, TravelEventType.AbandonedCaravanFood, 2);
+        AddWeightedEvent(weightedEvents, TravelEventType.AbandonedCaravanWater, 2);
+        AddWeightedEvent(weightedEvents, TravelEventType.Sickness, 2);
+
+        if (weightedEvents.Count == 0)
             return TravelEventType.None;
 
-        return validEvents[rng.Next(validEvents.Count)];
+        return weightedEvents[rng.Next(weightedEvents.Count)];
     }
 
     private void TriggerEvent(TravelEventType eventType, PlayerTravelController travelController)
     {
+        lastTriggeredEvent = eventType;
+
         switch (eventType)
         {
             case TravelEventType.Rain:
                 TriggerRainEvent();
                 break;
 
+            case TravelEventType.Sandstorm:
+                TriggerSandstormEvent();
+                break;
+
             case TravelEventType.Bandits:
                 TriggerBanditEvent(travelController);
+                break;
+
+            case TravelEventType.WildDogs:
+                TriggerWildDogEvent(travelController);
+                break;
+            
+            case TravelEventType.Sickness:
+                TriggerSicknessEvent();
+                break;
+
+            case TravelEventType.AbandonedCaravanFood:
+                TriggerAbandonedCaravanFoodEvent();
+                break;
+
+            case TravelEventType.AbandonedCaravanWater:
+                TriggerAbandonedCaravanWaterEvent();
                 break;
         }
     }
 
     public void TriggerRainEvent()
     {
+        isEventBlockingTravel = true;
+
         if (!eventPopupUI)
         {
             Debug.LogError("TravelEventManager: No EventPopupUI assigned/found.");
@@ -149,37 +243,56 @@ public class TravelEventManager : MonoBehaviour
 
     private void ApplyRainPenalty()
     {
-        RainTurnsRemaining = rainMovementPenaltyTurns;
+        activeWeather = WeatherType.Rain;
+        WeatherTurnsRemaining = rainMovementPenaltyTurns;
 
         CacheOriginalVisuals();
         ApplyRainVisuals();
 
-        Debug.Log($"Rainfall applied. Single-die movement for {RainTurnsRemaining} turns.");
+        isEventBlockingTravel = false;
+
+        Debug.Log($"Rainfall applied. Single-die movement for {WeatherTurnsRemaining} turns.");
     }
 
     public void ConsumeTravelRoll()
     {
-        if (RainTurnsRemaining <= 0)
+        if (WeatherTurnsRemaining <= 0)
             return;
 
-        RainTurnsRemaining--;
+        WeatherTurnsRemaining--;
 
-        if (RainTurnsRemaining == 0)
-            ShowRainEndedPopup();
+        if (WeatherTurnsRemaining == 0)
+            ShowWeatherEndedPopup();
     }
 
-    private void ShowRainEndedPopup()
+    private void ShowWeatherEndedPopup()
     {
+        WeatherType endedWeather = activeWeather;
+
         RestoreVisuals();
+        activeWeather = WeatherType.None;
+
+        isEventBlockingTravel = true;
 
         if (!eventPopupUI)
             return;
 
+        string title = endedWeather == WeatherType.Sandstorm ? "Sandstorm" : "Rainfall";
+        string body = endedWeather == WeatherType.Sandstorm
+            ? "The sandstorm has passed."
+            : "The rain has stopped.";
+
+        Sprite sprite = endedWeather == WeatherType.Sandstorm ? sandstormSprite : rainSprite;
+
         eventPopupUI.ShowSimpleEvent(
-            "Rainfall",
-            "The rain has stopped.",
-            rainSprite,
-            "OK"
+            title,
+            body,
+            sprite,
+            "OK",
+            () =>
+            {
+                isEventBlockingTravel = false;
+            }
         );
     }
 
@@ -227,6 +340,9 @@ public class TravelEventManager : MonoBehaviour
 
         if (rainController != null)
             rainController.StopRain();
+
+        if (sandstormParticles != null)
+            sandstormParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
     }
 
     private void TriggerBanditEvent(PlayerTravelController travelController)
@@ -249,6 +365,7 @@ public class TravelEventManager : MonoBehaviour
             return;
         }
 
+        isEventBlockingTravel = true;
         StartCoroutine(SpawnBanditAndShowPopup(travelController));
     }
 
@@ -273,7 +390,19 @@ public class TravelEventManager : MonoBehaviour
         if (actor == null)
             actor = activeBandit.AddComponent<BanditEventActor>();
 
+        StartBanditMusic();
+
         yield return actor.DropFromSky(spawnPos);
+        travelController.CacheCompanionPositions();
+        
+        if (travelController != null)
+        {
+            yield return travelController.EnterCombatFormation(activeBandit.transform);
+        }
+        
+        SetBanditPhysicsEnabled(activeBandit, true);
+
+        yield return new WaitForSeconds(0.5f);
 
         eventPopupUI.ShowChoiceEvent(
             "Bandits",
@@ -284,6 +413,13 @@ public class TravelEventManager : MonoBehaviour
             "Fight",
             HandleBanditFight
         );
+
+        RunState runState = FindFirstObjectByType<RunState>();
+        bool hasGold = runState != null && runState.resources != null && runState.resources.gold > 0;
+
+        eventPopupUI.SetOption1Interactable(hasGold);
+        eventPopupUI.SetOption2Interactable(true);
+        
     }
 
     private void SetBanditPhysicsEnabled(GameObject bandit, bool enabled)
@@ -297,6 +433,7 @@ public class TravelEventManager : MonoBehaviour
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
             rb.isKinematic = !enabled;
+            rb.useGravity = enabled;
         }
 
         Collider[] cols = bandit.GetComponentsInChildren<Collider>(true);
@@ -305,30 +442,57 @@ public class TravelEventManager : MonoBehaviour
 
         UprightStabilizer stabilizer = bandit.GetComponent<UprightStabilizer>();
         if (stabilizer)
+        {
             stabilizer.enabled = enabled;
+            stabilizer.stabilizerWeight = enabled ? 1f : 0f;
+        }
     }
 
     private void HandleBanditGiveGold()
     {
         int stolenGold = rng.Next(8, 26);
 
+        RunState runState = FindFirstObjectByType<RunState>();
+        int actualStolen = 0;
+
+        if (runState != null && runState.resources != null)
+            actualStolen = runState.resources.ConsumeGold(stolenGold);
+
+        var resourceHUD = FindFirstObjectByType<ResourceHUDController>();
+        if (resourceHUD != null)
+            resourceHUD.Refresh();
+
         eventPopupUI.ShowSimpleEvent(
             "Bandits",
-            $"The bandits took {stolenGold} gold.",
+            $"The bandits took {actualStolen} gold.",
             banditSprite,
             "OK",
-            ClearBandit
+            () =>
+            {
+                RestoreMusic();
+                ClearBandit();
+                isEventBlockingTravel = false;
+            }
         );
 
-        Debug.Log($"Bandits event: give up gold selected. Stolen gold = {stolenGold}");
+        Debug.Log($"Bandits event: give up gold selected. Stolen gold = {actualStolen}");
     }
 
     private void HandleBanditFight()
     {
         Debug.Log("Bandits event: Fight selected.");
-        // Later: enable combat mode here
-        // SetBanditPhysicsEnabled(activeBandit, true);
-        // Start fight minigame
+
+        if (activeBandit == null || enemyFightController == null)
+        {
+            Debug.LogError("Enemy fight could not start.");
+            isEventBlockingTravel = false;
+            RestoreMusic();
+            return;
+        }
+
+        isEventBlockingTravel = true;
+        
+        enemyFightController.StartFight(activeBandit, banditConfig);
     }
 
     private void ClearBandit()
@@ -337,5 +501,343 @@ public class TravelEventManager : MonoBehaviour
             Destroy(activeBandit);
 
         activeBandit = null;
+    }
+    
+    private void StartBanditMusic()
+    {
+        if (GameAudioManager.Instance == null)
+            return;
+
+        if (!hasStoredMusic)
+        {
+            previousMusicState = GameAudioManager.Instance.CurrentState;
+            hasStoredMusic = true;
+        }
+
+        GameAudioManager.Instance.PlayMusic(banditMusicState);
+    }
+
+    private void RestoreMusic()
+    {
+        if (GameAudioManager.Instance == null || !hasStoredMusic)
+            return;
+
+        GameAudioManager.Instance.PlayMusic(previousMusicState);
+        hasStoredMusic = false;
+    }
+    
+    private void AddWeightedEvent(List<TravelEventType> list, TravelEventType eventType, int baseWeight)
+    {
+        int weight = baseWeight;
+        
+        if (eventType == lastTriggeredEvent)
+            weight = Mathf.Max(1, baseWeight - 2);
+
+        for (int i = 0; i < weight; i++)
+            list.Add(eventType);
+    }
+    
+    private bool IsNearAnyTown(Vector3 worldPos, float minDistance, Terrain terrain)
+    {
+        var townSystem = FindFirstObjectByType<TownManager>();
+
+        if (townSystem == null || terrain == null)
+            return false;
+
+        float minDistSq = minDistance * minDistance;
+
+        foreach (var town in townSystem.towns)
+        {
+            Vector3 townPos;
+
+            if (town.go != null)
+            {
+                townPos = town.go.transform.position;
+            }
+            else
+            {
+                var data = terrain.terrainData;
+                float x = town.nz.x * data.size.x + terrain.transform.position.x;
+                float z = town.nz.y * data.size.z + terrain.transform.position.z;
+                float y = terrain.SampleHeight(new Vector3(x, 0f, z)) + terrain.transform.position.y;
+                townPos = new Vector3(x, y, z);
+            }
+
+            Vector3 a = new Vector3(worldPos.x, 0f, worldPos.z);
+            Vector3 b = new Vector3(townPos.x, 0f, townPos.z);
+
+            if ((a - b).sqrMagnitude <= minDistSq)
+                return true;
+        }
+
+        return false;
+    }
+    
+    public void SetEventBlocking(bool value)
+    {
+        isEventBlockingTravel = value;
+    }
+    
+    public void FinishActiveEnemyEvent(bool destroyEnemy = true)
+    {
+        RestoreMusic();
+
+        if (destroyEnemy)
+            ClearBandit();
+
+        SetEventBlocking(false);
+    }
+    
+    public void ShowBanditVictoryPopup(int goldReward, System.Action onClosed = null)
+    {
+        if (!eventPopupUI)
+        {
+            onClosed?.Invoke();
+            return;
+        }
+
+        isEventBlockingTravel = true;
+
+        eventPopupUI.ShowSimpleEvent(
+            "You won",
+            $"You received {goldReward} gold.",
+            moneySprite,
+            "OK",
+            () =>
+            {
+                isEventBlockingTravel = false;
+                onClosed?.Invoke();
+            }
+        );
+    }
+    
+    private void TriggerAbandonedCaravanFoodEvent()
+    {
+        isEventBlockingTravel = true;
+
+        if (!eventPopupUI)
+        {
+            Debug.LogError("TravelEventManager: No EventPopupUI assigned/found for abandoned caravan food event.");
+            return;
+        }
+
+        int foundFood = rng.Next(50, 101);
+
+        eventPopupUI.ShowSimpleEvent(
+            "Abandoned Caravan",
+            $"You found an abandoned caravan.\nYou recovered {foundFood} food.",
+            foodSprite,
+            "OK",
+            () =>
+            {
+                RunState runState = FindFirstObjectByType<RunState>();
+                if (runState != null && runState.resources != null)
+                    runState.resources.AddFood(foundFood);
+
+                var resourceHUD = FindFirstObjectByType<ResourceHUDController>();
+                if (resourceHUD != null)
+                    resourceHUD.Refresh();
+
+                isEventBlockingTravel = false;
+            }
+        );
+    }
+
+    private void TriggerAbandonedCaravanWaterEvent()
+    {
+        isEventBlockingTravel = true;
+
+        if (!eventPopupUI)
+        {
+            Debug.LogError("TravelEventManager: No EventPopupUI assigned/found for abandoned caravan water event.");
+            return;
+        }
+
+        int foundWater = rng.Next(50, 101);
+
+        eventPopupUI.ShowSimpleEvent(
+            "Abandoned Caravan",
+            $"You found an abandoned caravan.\nYou recovered {foundWater} water.",
+            waterSprite,
+            "OK",
+            () =>
+            {
+                RunState runState = FindFirstObjectByType<RunState>();
+                if (runState != null && runState.resources != null)
+                    runState.resources.AddWater(foundWater);
+
+                var resourceHUD = FindFirstObjectByType<ResourceHUDController>();
+                if (resourceHUD != null)
+                    resourceHUD.Refresh();
+
+                isEventBlockingTravel = false;
+            }
+        );
+    }
+    
+    public void TriggerSandstormEvent()
+    {
+        isEventBlockingTravel = true;
+
+        if (!eventPopupUI)
+        {
+            Debug.LogError("TravelEventManager: No EventPopupUI assigned/found.");
+            return;
+        }
+
+        eventPopupUI.ShowSimpleEvent(
+            "Sandstorm",
+            "A sandstorm sweeps across the road.\nMovement penalty for 3 turns.",
+            sandstormSprite,
+            "OK",
+            ApplySandstormPenalty
+        );
+    }
+
+    private void ApplySandstormPenalty()
+    {
+        activeWeather = WeatherType.Sandstorm;
+        WeatherTurnsRemaining = sandstormMovementPenaltyTurns;
+
+        CacheOriginalVisuals();
+        ApplySandstormVisuals();
+
+        isEventBlockingTravel = false;
+
+        Debug.Log($"Sandstorm applied. Single-die movement for {WeatherTurnsRemaining} turns.");
+    }
+    
+    private void ApplySandstormVisuals()
+    {
+        if (mainDirectionalLight != null)
+            mainDirectionalLight.intensity = sandstormLightIntensity;
+
+        if (sandstormParticles != null && !sandstormParticles.isPlaying)
+            sandstormParticles.Play();
+        
+        if (rainSkybox != null)
+        {
+            RenderSettings.skybox = rainSkybox;
+            DynamicGI.UpdateEnvironment();
+        }
+    }
+    
+    private void TriggerWildDogEvent(PlayerTravelController travelController)
+    {
+        isEventBlockingTravel = true;
+        StartCoroutine(SpawnWildDogAndShowPopup(travelController));
+    }
+    
+    private IEnumerator SpawnWildDogAndShowPopup(PlayerTravelController travelController)
+    {
+        Vector3 spawnPos = travelController.GetBanditSpawnPoint(banditSpawnDistanceAhead, banditSideOffset);
+
+        if (activeBandit != null)
+            Destroy(activeBandit);
+
+        activeBandit = Instantiate(wildDogPrefab);
+        activeBandit.name = "WildDogEventActor";
+
+        Vector3 lookDir = travelController.GetForwardForEvent();
+        lookDir.y = 0f;
+
+        if (lookDir.sqrMagnitude > 0.001f)
+            activeBandit.transform.rotation = Quaternion.LookRotation(-lookDir.normalized, Vector3.up);
+
+        SetBanditPhysicsEnabled(activeBandit, false);
+
+        BanditEventActor actor = activeBandit.GetComponent<BanditEventActor>();
+        if (actor == null)
+            actor = activeBandit.AddComponent<BanditEventActor>();
+        
+        StartBanditMusic();
+
+        yield return actor.DropFromSky(spawnPos);
+
+        yield return travelController.EnterCombatFormation(activeBandit.transform);
+
+        SetBanditPhysicsEnabled(activeBandit, true);
+
+        yield return new WaitForSeconds(0.5f);
+
+        eventPopupUI.ShowChoiceEvent(
+            "Wild Dogs",
+            "A wild dog attacks you.",
+            wildDogSprite,
+            "Throw them food",
+            HandleDogGiveFood,
+            "Fight",
+            HandleDogFight
+        );
+        
+        RunState runState = FindFirstObjectByType<RunState>();
+        bool hasFood = runState != null && runState.resources != null && runState.resources.food > 0;
+
+        eventPopupUI.SetOption1Interactable(hasFood);
+        eventPopupUI.SetOption2Interactable(true);
+    }
+    
+    private void HandleDogGiveFood()
+    {
+        int foodLoss = rng.Next(10, 30);
+
+        RunState runState = FindFirstObjectByType<RunState>();
+        int actual = 0;
+
+        if (runState != null)
+            actual = runState.resources.ConsumeFood(foodLoss);
+
+        eventPopupUI.ShowSimpleEvent(
+            "Wild Dogs",
+            $"The dogs took {actual} food.",
+            wildDogSprite,
+            "OK",
+            () =>
+            {
+                ClearBandit();
+                isEventBlockingTravel = false;
+            }
+        );
+    }
+    
+    private void HandleDogFight()
+    {
+        if (activeBandit == null || enemyFightController == null)
+        {
+            isEventBlockingTravel = false;
+            return;
+        }
+
+        enemyFightController.StartFight(activeBandit, wildDogConfig);
+    }
+    
+    private void TriggerSicknessEvent()
+    {
+        isEventBlockingTravel = true;
+
+        RunState runState = FindFirstObjectByType<RunState>();
+
+        if (runState == null || runState.party == null || runState.party.members.Count == 0)
+        {
+            isEventBlockingTravel = false;
+            return;
+        }
+
+        int index = UnityEngine.Random.Range(0, runState.party.members.Count);
+        runState.sickMemberIndex = index;
+
+        var member = runState.party.members[index];
+        string name = string.IsNullOrWhiteSpace(member.memberName) ? "A party member" : member.memberName;
+
+        eventPopupUI.ShowSimpleEvent(
+            "Illness",
+            $"{name} has fallen ill.",
+            skullSprite,
+            "OK",
+            () =>
+            {
+                isEventBlockingTravel = false;
+            }
+        );
     }
 }

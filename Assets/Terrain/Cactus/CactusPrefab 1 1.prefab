@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 447236538793988847}
   m_Layer: 0
   m_Name: CactusPrefab 1 1
-  m_TagString: Untagged
+  m_TagString: Cactus
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -117,11 +117,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ab1f5ef5421742bca2151f6acbf86401, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RubberCactus
-  launchHorizontalSpeed: 10
-  launchUpwardSpeed: 8
+  launchHorizontalSpeed: 25
+  launchUpwardSpeed: 12.5
   minImpactSpeed: 0.2
-  extraVelocityChange: 6
-  spinKick: 10
+  extraVelocityChange: 2
+  spinKick: 4
   targetRenderers: []
   wobbleStrengthMultiplier: 0.2
   maxWobbleStrength: 1.5

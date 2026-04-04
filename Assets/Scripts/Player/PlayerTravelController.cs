@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -26,9 +27,17 @@ public class PlayerTravelController : MonoBehaviour
     [Header("Player")]
     [SerializeField] private GameObject playerPrefab;
     private PlayerMotor player;
+    private Vector3 playerCombatHomePos;
+    private Quaternion playerCombatHomeRot;
+    
+    [Header("Travel HUD")]
+    [SerializeField] private GameObject destinationPanel;
+    [SerializeField] private TMP_Text destinationText;
 
     [Header("Dice")]
     [SerializeField] private GameObject dicePrefab;
+
+    [SerializeField] private float diceTimeoutSeconds = 8f;
 
     [Header("Path / Hops")]
     [SerializeField] private float minDistanceFromTownWorld = 12f;
@@ -49,11 +58,19 @@ public class PlayerTravelController : MonoBehaviour
     [Header("Companions")]
     [SerializeField] private GameObject companionPrefab;
     [SerializeField] private float companionFollowStartDelay = 0.55f;
+    [SerializeField] private EventPopupUI eventPopupUI;
+    [SerializeField] private Sprite skullSprite;
+    
+    [Header("Companion Departure")]
+    [SerializeField, Range(0f, 1f)] private float unpaidCompanionLeaveChancePerRoll = 0.35f;
+    [SerializeField] private Sprite companionLeftSprite;
     
     [SerializeField] private GrassDisplacementGlobals grassDisplacementGlobals;
     
     private readonly List<PlayerMotor> companions = new();
     private readonly List<int> companionSpaceIndices = new();
+    private List<Vector3> cachedCompanionPositions = new();
+    private List<Quaternion> cachedCompanionRotations = new();
     
     private TravelState state = TravelState.Town;
 
@@ -87,6 +104,9 @@ public class PlayerTravelController : MonoBehaviour
         if (!resourceHUD) resourceHUD = FindFirstObjectByType<ResourceHUDController>();
         if (!inventoryUI) inventoryUI = FindFirstObjectByType<InventoryUIController>();
         if (!townUI) townUI = FindFirstObjectByType<TownUIController>();
+        
+        if (!eventPopupUI)
+            eventPopupUI = FindFirstObjectByType<EventPopupUI>(FindObjectsInactive.Include);
         
         if (!grassDisplacementGlobals)
             grassDisplacementGlobals = FindFirstObjectByType<GrassDisplacementGlobals>();
@@ -170,6 +190,8 @@ public class PlayerTravelController : MonoBehaviour
             nextTownId = -1;
             return;
         }
+        
+        RefreshDestinationHUD();
 
         EnsurePlayerExists();
 
@@ -190,6 +212,12 @@ public class PlayerTravelController : MonoBehaviour
         
         while (currentSpaceIndex < activeSpaces.Count - 1)
         {
+            if (travelEventManager != null && travelEventManager.IsEventBlockingTravel)
+            {
+                state = TravelState.EventPopup;
+                yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
+            }
+
             state = TravelState.Dice;
 
             player.EnablePhysics();
@@ -199,13 +227,18 @@ public class PlayerTravelController : MonoBehaviour
             reset?.Capture();
 
             int total;
-            bool usedRainPenaltyThisRoll = false;
+            bool usedWeatherPenaltyThisRoll = false;
 
-            if (travelEventManager != null && travelEventManager.RainPenaltyActive)
+            if (travelEventManager != null && travelEventManager.IsEventBlockingTravel)
+            {
+                yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
+            }
+            
+            if (travelEventManager != null && travelEventManager.IsWeatherActive)
             {
                 yield return WaitForSingleDie();
                 total = diceAValue;
-                usedRainPenaltyThisRoll = true;
+                usedWeatherPenaltyThisRoll = true;
             }
             else
             {
@@ -241,6 +274,7 @@ public class PlayerTravelController : MonoBehaviour
                 i =>
                 {
                     currentSpaceIndex = i;
+                    RefreshDestinationHUD();
                     pendingMoves--;
                 },
                 0f);
@@ -297,15 +331,15 @@ public class PlayerTravelController : MonoBehaviour
             while (pendingMoves > 0)
                 yield return null;
 
-            if (usedRainPenaltyThisRoll && travelEventManager != null)
+            if (usedWeatherPenaltyThisRoll && travelEventManager != null)
             {
                 travelEventManager.ConsumeTravelRoll();
 
-                if (travelEventManager.EventPopupShowing)
+                if (travelEventManager.IsEventBlockingTravel)
                 {
                     state = TravelState.EventPopup;
 
-                    while (travelEventManager.EventPopupShowing)
+                    while (travelEventManager.IsEventBlockingTravel)
                         yield return null;
                 }
             }
@@ -323,7 +357,7 @@ public class PlayerTravelController : MonoBehaviour
                 {
                     state = TravelState.EventPopup;
 
-                    while (travelEventManager.EventPopupShowing)
+                    while (travelEventManager.IsEventBlockingTravel)
                         yield return null;
                 }
             }
@@ -372,7 +406,7 @@ public class PlayerTravelController : MonoBehaviour
 
     private void SpawnDicePair()
     {
-        bool singleDieMode = travelEventManager != null && travelEventManager.RainPenaltyActive;
+        bool singleDieMode = travelEventManager != null && travelEventManager.IsWeatherActive;
 
         diceA = Instantiate(dicePrefab).GetComponent<DiceController>();
         if (!diceA)
@@ -493,6 +527,8 @@ public class PlayerTravelController : MonoBehaviour
             baseDir = Vector3.forward;
 
         int pendingSpawns = 1 + companions.Count;
+        
+        RefreshDestinationHUD();
         
         StartCoroutine(SpawnMotorFromTown(player, townPos, leaderSpawnPos, forward, () =>
         {
@@ -630,8 +666,10 @@ public class PlayerTravelController : MonoBehaviour
             townUI.ShowTown(townSystem.towns[currentTownId]);
         }
         
+        HideDestinationHUD();
+        
         RefreshMusicForCurrentContext(true);
-        RefreshRainFollowTarget();
+        RefreshWeatherFollowTargets();
 
         Debug.Log($"Entered Town Mode at town {currentTownId}. Map reopened.");
     }
@@ -656,12 +694,13 @@ public class PlayerTravelController : MonoBehaviour
             inventoryUI.SetTravelUIVisible(true);
 
         RefreshMusicForCurrentContext(false);
-        
+    
         cameraFocus.SetParent(null);
         cameraFocus.position = player.transform.position;
 
         cameraFollow.SetTarget(player.transform, snap);
-        RefreshRainFollowTarget();
+        RefreshWeatherFollowTargets();
+        RefreshDestinationHUD();
     }
 
     private void OnDrawGizmosSelected()
@@ -695,13 +734,55 @@ public class PlayerTravelController : MonoBehaviour
     
     private IEnumerator WaitForDicePair()
     {
+        if (GameOverManager.IsGameOver)
+            yield break;
+        
+        if (travelEventManager != null)
+            yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
+
         diceAReady = false;
         diceBReady = false;
 
         SpawnDicePair();
+        
+        yield return new WaitUntil(() =>
+            diceA != null &&
+            diceB != null &&
+            diceA.HasBeenThrown &&
+            diceB.HasBeenThrown
+        );
+
+        float timer = 0f;
+        bool forced = false;
 
         while (!diceAReady || !diceBReady)
+        {
+            if (GameOverManager.IsGameOver)
+                yield break;
+            
+            timer += Time.deltaTime;
+
+            if (!forced && timer >= diceTimeoutSeconds)
+            {
+                forced = true;
+
+                if (diceA != null && !diceAReady)
+                {
+                    int forcedA = UnityEngine.Random.Range(1, 7);
+                    diceA.ForceResult(forcedA);
+                    Debug.LogWarning("Dice A timeout after throw → forcing reveal result: " + forcedA);
+                }
+
+                if (diceB != null && !diceBReady)
+                {
+                    int forcedB = UnityEngine.Random.Range(1, 7);
+                    diceB.ForceResult(forcedB);
+                    Debug.LogWarning("Dice B timeout after throw → forcing reveal result: " + forcedB);
+                }
+            }
+
             yield return null;
+        }
     }
     
     private IEnumerator ShrinkAndDestroy(GameObject go, float duration)
@@ -757,6 +838,8 @@ public class PlayerTravelController : MonoBehaviour
 
         if (result.goldShortageTriggered)
             HandleGoldShortageTriggered(result);
+        
+        HandleSickness();
     }
 
     private void HandleStarvationTriggered(TravelSupplyResult result)
@@ -766,6 +849,71 @@ public class PlayerTravelController : MonoBehaviour
         int afterDead = runState.party.CountDeadMembers();
 
         Debug.Log($"[Starvation] Food shortage after travel roll. Applied {runState.starvationDamagePerRoll} to each party member. Total damage dealt: {totalDamage}. Dead members: {beforeDead}->{afterDead}");
+
+        partyHUD?.Refresh();
+        resourceHUD?.Refresh();
+
+        StartCoroutine(ProcessDeathsAfterDamage(
+            "You have to leave behind what they were carrying.",
+            "Your caravan leader starved to death."
+        ));
+    }
+    
+    private void HandleSickness()
+    {
+        if (runState == null || !runState.IsSomeoneSick)
+            return;
+
+        int index = runState.sickMemberIndex;
+
+        var member = runState.party.members[index];
+        if (member == null)
+        {
+            runState.sickMemberIndex = -1;
+            return;
+        }
+
+        string name = string.IsNullOrWhiteSpace(member.memberName) ? "A party member" : member.memberName;
+
+        bool recovered = runState.ProcessSicknessTick();
+
+        partyHUD?.Refresh();
+        
+        if (member.IsDead())
+        {
+            if (index == 0)
+            {
+                TriggerLeaderDeathGameOver($"{name} succumbed to illness.");
+                return;
+            }
+
+            StartCoroutine(ProcessDeathsAfterDamage(
+                "You have to leave behind what they were carrying.",
+                $"{name} died from illness."
+            ));
+
+            return;
+        }
+        
+        if (recovered)
+        {
+            bool acknowledged = false;
+
+            eventPopupUI.ShowSimpleEvent(
+                "Recovery",
+                $"{name} is feeling better.",
+                skullSprite,
+                "OK",
+                () => acknowledged = true
+            );
+
+            StartCoroutine(WaitForPopup(acknowledged));
+        }
+    }
+    
+    private IEnumerator WaitForPopup(bool acknowledged)
+    {
+        yield return new WaitUntil(() => acknowledged);
     }
 
     private void HandleDehydrationTriggered(TravelSupplyResult result)
@@ -775,11 +923,21 @@ public class PlayerTravelController : MonoBehaviour
         int afterDead = runState.party.CountDeadMembers();
 
         Debug.Log($"[Dehydration] Water shortage after travel roll. Applied {runState.dehydrationDamagePerRoll} to each party member. Total damage dealt: {totalDamage}. Dead members: {beforeDead}->{afterDead}");
+
+        partyHUD?.Refresh();
+        resourceHUD?.Refresh();
+
+        StartCoroutine(ProcessDeathsAfterDamage(
+            "You have to leave behind what they were carrying.",
+            "Your caravan leader died of dehydration."
+        ));
     }
     
     private void HandleGoldShortageTriggered(TravelSupplyResult result)
     {
-        Debug.Log($"[Wages] Gold shortage after travel roll. Required {result.requiredGold}, paid {result.consumedGold}. No penalty implemented yet.");
+        Debug.Log($"[Wages] Gold shortage after travel roll. Required {result.requiredGold}, paid {result.consumedGold}.");
+
+        StartCoroutine(ProcessCompanionDeparturesAfterGoldShortage());
     }
     
     private void DebugAddPartyMember()
@@ -1010,28 +1168,66 @@ public class PlayerTravelController : MonoBehaviour
     
     private IEnumerator WaitForSingleDie()
     {
+        if (GameOverManager.IsGameOver)
+            yield break;
+        
+        if (travelEventManager != null)
+            yield return new WaitUntil(() => !travelEventManager.IsEventBlockingTravel);
+
         diceAReady = false;
-        diceBReady = false;
 
         SpawnDicePair();
 
+        yield return new WaitUntil(() =>
+            diceA != null &&
+            diceA.HasBeenThrown
+        );
+
+        float timer = 0f;
+        bool forced = false;
+
         while (!diceAReady)
+        {
+            timer += Time.deltaTime;
+
+            if (!forced && timer >= diceTimeoutSeconds)
+            {
+                forced = true;
+
+                if (diceA != null)
+                {
+                    int forcedA = UnityEngine.Random.Range(1, 7);
+                    diceA.ForceResult(forcedA);
+                    Debug.LogWarning("Single die timeout after throw → forcing reveal result: " + forcedA);
+                }
+            }
+
             yield return null;
+        }
     }
     
-    private void RefreshRainFollowTarget()
+    private void RefreshWeatherFollowTargets()
     {
-        if (travelEventManager == null)
-            return;
-
-        RainController rain = FindFirstObjectByType<RainController>();
-        if (rain == null)
-            return;
-
         if (player != null)
-            rain.SetFollowTarget(player.transform);
+        {
+            RainController rain = FindFirstObjectByType<RainController>();
+            if (rain != null)
+                rain.SetFollowTarget(player.transform);
+
+            SandstormController sandstorm = FindFirstObjectByType<SandstormController>();
+            if (sandstorm != null)
+                sandstorm.SetFollowTarget(player.transform);
+        }
         else if (cameraFocus != null)
-            rain.SetFollowTarget(cameraFocus);
+        {
+            RainController rain = FindFirstObjectByType<RainController>();
+            if (rain != null)
+                rain.SetFollowTarget(cameraFocus);
+
+            SandstormController sandstorm = FindFirstObjectByType<SandstormController>();
+            if (sandstorm != null)
+                sandstorm.SetFollowTarget(cameraFocus);
+        }
     }
     
     public Vector3 GetForwardForEvent()
@@ -1069,5 +1265,315 @@ public class PlayerTravelController : MonoBehaviour
         }
 
         return pos;
+    }
+    
+    public void CachePlayerCombatHome()
+    {
+        if (player == null)
+            return;
+
+        playerCombatHomePos = player.transform.position;
+        playerCombatHomeRot = player.transform.rotation;
+    }
+    
+    public PlayerMotor Player => player;
+
+    public Vector3 PlayerHomePosition => playerCombatHomePos;
+    public Quaternion PlayerHomeRotation => playerCombatHomeRot;
+    public GameObject DicePrefab => dicePrefab;
+
+    public List<Transform> GetCombatTargets()
+    {
+        var list = new List<Transform>();
+
+        if (player != null)
+            list.Add(player.transform);
+
+        for (int i = 0; i < companions.Count; i++)
+        {
+            if (companions[i] != null && companions[i].gameObject.activeInHierarchy)
+                list.Add(companions[i].transform);
+        }
+
+        return list;
+    }
+    
+    public Vector3 GetGroundedCombatPosition(Vector3 worldPos)
+    {
+        if (!terrain)
+            return worldPos;
+
+        float y = terrain.SampleHeight(worldPos) + terrain.transform.position.y + 0.12f;
+        return new Vector3(worldPos.x, y, worldPos.z);
+    }
+    
+    public IEnumerator EnterCombatFormation(Transform enemy)
+    {
+        if (player == null || companions.Count == 0)
+            yield break;
+
+        Vector3 playerPos = player.transform.position;
+        
+        Vector3 forward = (enemy.position - playerPos);
+        forward.y = 0f;
+        forward.Normalize();
+
+        Vector3 right = Vector3.Cross(Vector3.up, forward);
+
+        List<Vector3> targetPositions = new List<Vector3>();
+        
+        targetPositions.Add(playerPos + forward * 1f - right * 4f);
+        
+        targetPositions.Add(playerPos + forward * 1f + right * 4f);
+        
+        targetPositions.Add(playerPos + forward * 7f + right * 6f);
+
+        int count = Mathf.Min(companions.Count, targetPositions.Count);
+
+        int pending = count;
+
+        for (int i = 0; i < count; i++)
+        {
+            var comp = companions[i];
+            if (comp == null)
+            {
+                pending--;
+                continue;
+            }
+
+            Vector3 targetPos = targetPositions[i];
+            targetPos = GetGroundedCombatPosition(targetPos);
+
+            Vector3 toEnemy = enemy.position - comp.transform.position;
+            toEnemy.y = 0f;
+
+            if (toEnemy.sqrMagnitude < 0.001f)
+                toEnemy = forward;
+
+            toEnemy.Normalize();
+
+            comp.BeginHopToPosition(
+                this,
+                targetPos,
+                toEnemy,
+                0.4f,   
+                1.2f,  
+                () => { pending--; }
+            );
+        }
+
+        while (pending > 0)
+            yield return null;
+    }
+    
+    public void CacheCompanionPositions()
+    {
+        cachedCompanionPositions.Clear();
+        cachedCompanionRotations.Clear();
+
+        foreach (var comp in companions)
+        {
+            if (comp == null)
+            {
+                cachedCompanionPositions.Add(Vector3.zero);
+                cachedCompanionRotations.Add(Quaternion.identity);
+                continue;
+            }
+
+            cachedCompanionPositions.Add(comp.transform.position);
+            cachedCompanionRotations.Add(comp.transform.rotation);
+        }
+    }
+    
+    public IEnumerator RestoreCompanionsAfterCombat()
+    {
+        int pending = companions.Count;
+
+        for (int i = 0; i < companions.Count; i++)
+        {
+            var comp = companions[i];
+            if (comp == null)
+            {
+                pending--;
+                continue;
+            }
+
+            Vector3 targetPos = cachedCompanionPositions[i];
+            Quaternion targetRot = cachedCompanionRotations[i];
+
+            comp.BeginHopToPosition(
+                this,
+                targetPos,
+                targetRot * Vector3.forward,
+                0.35f,
+                0.8f,
+                () => { pending--; }
+            );
+        }
+
+        while (pending > 0)
+            yield return null;
+    }
+    
+    private void RefreshDestinationHUD()
+    {
+        bool showTravelTarget =
+            nextTownId >= 0 &&
+            townSystem != null &&
+            nextTownId < townSystem.towns.Count &&
+            activeSpaces != null &&
+            activeSpaces.Count > 0 &&
+            player != null;
+
+        if (destinationPanel != null)
+            destinationPanel.SetActive(showTravelTarget);
+        else if (destinationText != null)
+            destinationText.gameObject.SetActive(showTravelTarget);
+
+        if (!showTravelTarget || destinationText == null)
+            return;
+
+        int spacesRemaining = Mathf.Max(0, (activeSpaces.Count - 1) - currentSpaceIndex);
+        string townName = townSystem.towns[nextTownId] != null
+            ? townSystem.towns[nextTownId].townName
+            : "Unknown Town";
+
+        string spacesWord = spacesRemaining == 1 ? "space" : "spaces";
+        destinationText.text = $"{townName}\n{spacesRemaining} {spacesWord} away";
+    }
+
+    private void HideDestinationHUD()
+    {
+        if (destinationPanel != null)
+            destinationPanel.SetActive(false);
+        else if (destinationText != null)
+            destinationText.gameObject.SetActive(false);
+    }
+    
+    private void TriggerLeaderDeathGameOver(string reason)
+    {
+        if (runState == null || !runState.IsLeaderDead())
+            return;
+
+        var gameOver = FindFirstObjectByType<GameOverManager>();
+        if (gameOver != null && !gameOver.IsGameOverTriggered)
+            gameOver.TriggerGameOver(reason);
+    }
+    
+    public void RemoveCompanionAtPartyIndex(int partyIndex)
+    {
+        int companionIndex = partyIndex - 1;
+
+        if (companionIndex < 0 || companionIndex >= companions.Count)
+            return;
+
+        if (companions[companionIndex] != null)
+            Destroy(companions[companionIndex].gameObject);
+
+        companions.RemoveAt(companionIndex);
+
+        if (companionIndex >= 0 && companionIndex < companionSpaceIndices.Count)
+            companionSpaceIndices.RemoveAt(companionIndex);
+
+        if (companionIndex >= 0 && companionIndex < cachedCompanionPositions.Count)
+            cachedCompanionPositions.RemoveAt(companionIndex);
+
+        if (companionIndex >= 0 && companionIndex < cachedCompanionRotations.Count)
+            cachedCompanionRotations.RemoveAt(companionIndex);
+    }
+    
+    public IEnumerator ProcessDeathsAfterDamage(string nonLeaderDeathText, string leaderDeathText)
+    {
+        if (runState == null || runState.party == null || runState.party.members == null)
+            yield break;
+
+        // Leader death always wins
+        if (runState.IsLeaderDead())
+        {
+            var gameOver = FindFirstObjectByType<GameOverManager>();
+            if (gameOver != null && !gameOver.IsGameOverTriggered)
+                gameOver.TriggerGameOver(leaderDeathText);
+
+            yield break;
+        }
+
+        // Remove dead non-leaders from back to front
+        for (int i = runState.party.members.Count - 1; i >= 1; i--)
+        {
+            var member = runState.party.members[i];
+            if (member == null || !member.IsDead())
+                continue;
+
+            string deadName = string.IsNullOrWhiteSpace(member.memberName) ? "A companion" : member.memberName;
+
+            bool acknowledged = false;
+
+            if (eventPopupUI != null)
+            {
+                eventPopupUI.ShowSimpleEvent(
+                    "Companion Lost",
+                    $"{deadName} has died.\n\n{nonLeaderDeathText}",
+                    skullSprite,
+                    "OK",
+                    () => { acknowledged = true; }
+                );
+
+                yield return new WaitUntil(() => acknowledged);
+            }
+
+            RemoveCompanionAtPartyIndex(i);
+            runState.party.TryRemoveMemberAt(i);
+
+            partyHUD?.Refresh();
+            resourceHUD?.Refresh();
+            inventoryUI?.Refresh();
+        }
+    }
+    
+    private IEnumerator ProcessCompanionDeparturesAfterGoldShortage()
+    {
+        if (runState == null || runState.party == null || runState.party.members == null)
+            yield break;
+
+        List<int> eligible = new List<int>();
+
+        for (int i = 1; i < runState.party.members.Count; i++)
+        {
+            var member = runState.party.members[i];
+            if (member != null)
+                eligible.Add(i);
+        }
+
+        if (eligible.Count == 0)
+            yield break;
+
+        if (UnityEngine.Random.value > unpaidCompanionLeaveChancePerRoll)
+            yield break;
+
+        int chosen = eligible[UnityEngine.Random.Range(0, eligible.Count)];
+        var memberToLeave = runState.party.members[chosen];
+        string leaverName = string.IsNullOrWhiteSpace(memberToLeave.memberName) ? "A companion" : memberToLeave.memberName;
+
+        bool acknowledged = false;
+
+        if (eventPopupUI != null)
+        {
+            eventPopupUI.ShowSimpleEvent(
+                "Companion Left",
+                $"{leaverName} has left the caravan after going unpaid.",
+                companionLeftSprite != null ? companionLeftSprite : skullSprite,
+                "OK",
+                () => { acknowledged = true; }
+            );
+
+            yield return new WaitUntil(() => acknowledged);
+        }
+
+        RemoveCompanionAtPartyIndex(chosen);
+        runState.party.TryRemoveMemberAt(chosen);
+
+        partyHUD?.Refresh();
+        resourceHUD?.Refresh();
+        inventoryUI?.Refresh();
     }
 }

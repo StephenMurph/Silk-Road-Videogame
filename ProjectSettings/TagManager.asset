@@ -6,6 +6,7 @@ TagManager:
   tags:
   - Dice
   - Tree
+  - Cactus
   layers:
   - Default
   - TransparentFX

@@ -64,6 +64,14 @@ public class DiceController : MonoBehaviour
     [SerializeField] private float minImpactSoundSpeed = 1.5f;
     [SerializeField] private float impactSoundCooldown = 0.06f;
     
+    [SerializeField] private AudioClip sandGroundHitClip;
+    [SerializeField] private float sandGroundHitVolume = 1.2f;
+    
+    [SerializeField] private AudioClip cactusHitClip;
+    [SerializeField] private float cactusHitVolume = 1.2f;
+    
+    public bool HasBeenThrown => thrown;
+    
     private float lastImpactSoundTime = -999f;
 
     private Terrain terrain;
@@ -176,7 +184,7 @@ public class DiceController : MonoBehaviour
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
-        
+    
         if (diceColider) diceColider.isTrigger = true;
 
         if (diceColider) diceColider.enabled = true;
@@ -507,22 +515,25 @@ public class DiceController : MonoBehaviour
         GameObject other = collision.gameObject;
         if (!other)
             return;
-
-        // Player / companions
+    
         if (other.CompareTag("Player"))
         {
             PlayImpactClip(playerHitClip, playerHitVolume);
             return;
         }
-
-        // Tree
+    
         if (other.CompareTag("Tree"))
         {
             PlayImpactClip(treeHitClip, treeHitVolume);
             return;
         }
 
-        // Terrain / grassland ground
+        if (other.CompareTag("Cactus"))
+        {
+            PlayImpactClip(cactusHitClip, cactusHitVolume);
+            return;
+        }
+    
         if (terrain != null && terrainManager != null && collision.contactCount > 0)
         {
             ContactPoint contact = collision.GetContact(0);
@@ -535,12 +546,14 @@ public class DiceController : MonoBehaviour
             {
                 float desert = terrainManager.SendMessageDesertMask(nx, nz);
 
-                // Only grassland for now
-                if (desert < 0.35f)
+                if (desert >= 0.35f)
                 {
-                    PlayImpactClip(grasslandGroundHitClip, grasslandGroundHitVolume);
+                    PlayImpactClip(sandGroundHitClip, sandGroundHitVolume);
                     return;
                 }
+
+                PlayImpactClip(grasslandGroundHitClip, grasslandGroundHitVolume);
+                return;
             }
         }
     }
@@ -552,5 +565,14 @@ public class DiceController : MonoBehaviour
 
         lastImpactSoundTime = Time.time;
         impactSource.PlayOneShot(clip, volume);
+    }
+    
+    public void ForceResult(int value)
+    {
+        if (revealing || showingResult)
+            return;
+
+        int clampedValue = Mathf.Clamp(value, 1, 6);
+        StartCoroutine(RevealResultRoutine(clampedValue));
     }
 }

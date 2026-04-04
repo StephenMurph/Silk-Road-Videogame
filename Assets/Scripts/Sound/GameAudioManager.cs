@@ -11,7 +11,9 @@ public class GameAudioManager : MonoBehaviour
         GrasslandTravel,
         DesertTravel,
         GrasslandTown,
-        DesertTown
+        DesertTown,
+        Battle,
+        GameOver
     }
 
     [Header("Sources")]
@@ -23,15 +25,21 @@ public class GameAudioManager : MonoBehaviour
     [SerializeField] private AudioClip desertTravelMusic;
     [SerializeField] private AudioClip grasslandTownMusic;
     [SerializeField] private AudioClip desertTownMusic;
+    [SerializeField] private AudioClip BattleMusic;
+    [SerializeField] private AudioClip gameOverMusic;
 
     [Header("Settings")]
     [SerializeField] private float musicVolume = 0.7f;
     [SerializeField] private float crossfadeDuration = 1.5f;
+    
+    [Header("SFX")]
+    [SerializeField] private AudioSource sfxSource;
+    [SerializeField] private AudioClip playerHopLandSfx;
 
     private AudioSource activeSource;
     private AudioSource inactiveSource;
     private Coroutine crossfadeRoutine;
-    private MusicState currentState = MusicState.None;
+    public MusicState CurrentState { get; private set; }
 
     private void Awake()
     {
@@ -45,6 +53,13 @@ public class GameAudioManager : MonoBehaviour
 
         if (!musicSourceA) musicSourceA = gameObject.AddComponent<AudioSource>();
         if (!musicSourceB) musicSourceB = gameObject.AddComponent<AudioSource>();
+        
+        if (!sfxSource)
+        {
+            sfxSource = gameObject.AddComponent<AudioSource>();
+            sfxSource.playOnAwake = false;
+            sfxSource.spatialBlend = 0f;
+        }
 
         SetupMusicSource(musicSourceA);
         SetupMusicSource(musicSourceB);
@@ -63,11 +78,11 @@ public class GameAudioManager : MonoBehaviour
 
     public void PlayMusic(MusicState state, bool instant = false)
     {
-        if (state == currentState)
+        if (state == CurrentState)
             return;
 
         AudioClip clip = GetClipForState(state);
-        currentState = state;
+        CurrentState = state;
 
         if (clip == null)
         {
@@ -95,7 +110,7 @@ public class GameAudioManager : MonoBehaviour
 
     public void StopMusic(bool instant = false)
     {
-        currentState = MusicState.None;
+        CurrentState = MusicState.None;
 
         if (crossfadeRoutine != null)
             StopCoroutine(crossfadeRoutine);
@@ -179,7 +194,20 @@ public class GameAudioManager : MonoBehaviour
             case MusicState.DesertTravel: return desertTravelMusic;
             case MusicState.GrasslandTown: return grasslandTownMusic;
             case MusicState.DesertTown: return desertTownMusic;
+            case MusicState.Battle: return BattleMusic;
+            case MusicState.GameOver: return gameOverMusic;
             default: return null;
         }
+    }
+    
+    public void PlaySfx(AudioClip clip, float volume = 1f)
+    {
+        if (clip == null) return;
+        sfxSource.PlayOneShot(clip, volume);
+    }
+
+    public void PlayHopLand()
+    {
+        PlaySfx(playerHopLandSfx, 1f);
     }
 }

@@ -10,7 +10,8 @@ public class TownManager : MonoBehaviour
     public Terrain terrain;                
 
     [Header("Towns")]
-    public GameObject housePrefab;
+    public GameObject grasslandHousePrefab;
+    public GameObject desertHousePrefab;
     public int townCount = 8;
     public int townSeed = 1234;
 
@@ -24,7 +25,7 @@ public class TownManager : MonoBehaviour
     public float seaBuffer01 = 0.01f;
 
     [Tooltip("Don’t place towns in strong mountain biome.")]
-    [Range(0f, 1f)] public float mountainBlockCutoff = 0.35f;
+    [Range(0f, 1f)] public float mountainBlockCutoff = 0.5f;
     
     [Header("Debug")]
     public bool clearExistingTowns = true;
@@ -149,9 +150,9 @@ public class TownManager : MonoBehaviour
         if (!terrainManager) terrainManager = GetComponent<TerrainManager>();
         if (!terrain) terrain = terrainManager ? terrainManager.GetComponent<Terrain>() : null;
 
-        if (!terrainManager || !terrain || !housePrefab)
+        if (!terrainManager || !terrain || !grasslandHousePrefab || !desertHousePrefab)
         {
-            Debug.LogError("TownManager: missing refs (terrainManager/terrain/housePrefab).");
+            Debug.LogError("TownManager: missing refs (terrainManager/terrain/grasslandHousePrefab/desertHousePrefab).");
             return;
         }
 
@@ -159,6 +160,13 @@ public class TownManager : MonoBehaviour
         RefreshAllTownMarkets(0);
 
         Debug.Log($"TownManager: spawned {towns.Count} towns.");
+    }
+    
+    private GameObject GetHousePrefabForBiome(TownBiomeType biomeType)
+    {
+        return biomeType == TownBiomeType.Desert
+            ? desertHousePrefab
+            : grasslandHousePrefab;
     }
 
     void SpawnTowns(TerrainData data)
@@ -193,6 +201,9 @@ public class TownManager : MonoBehaviour
         {
             float m = terrainManager.SendMessageMountainMask(nx, nz);
             if (m >= mountainBlockCutoff) return false;
+            
+            float edge = terrainManager.SendMessageEdgeMask(nx, nz);
+            if (edge > 0.10f) return false;
             
             float desert = terrainManager.SendMessageDesertMask(nx, nz);
             
@@ -254,10 +265,18 @@ public class TownManager : MonoBehaviour
             float h01 = Mathf.Clamp01(data.GetInterpolatedHeight(nx, nz) / data.size.y);
             Vector3 world = new Vector3(nx * data.size.x, h01 * data.size.y, nz * data.size.z) + terrain.transform.position;
 
-            var goTown = Instantiate(housePrefab, world, Quaternion.identity, root);
+            TownBiomeType biomeType = GetTownBiomeType(nx, nz);
+            GameObject prefab = GetHousePrefabForBiome(biomeType);
+
+            if (prefab == null)
+            {
+                Debug.LogError($"TownManager: Missing house prefab for biome {biomeType}.");
+                return;
+            }
+
+            var goTown = Instantiate(prefab, world, Quaternion.identity, root);
             goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
 
-            TownBiomeType biomeType = GetTownBiomeType(nx, nz);
             string townName = GetRandomTownName(biomeType, rng, usedTownNames);
             usedTownNames.Add(townName);
 
@@ -347,8 +366,7 @@ public class TownManager : MonoBehaviour
             point = default;
             return false;
         }
-
-        // ---------- 1) choose two endpoint regions ----------
+        
         Rect leftRect = new Rect(0.05f, 0.10f, 0.20f, 0.80f);
         Rect rightRect = new Rect(0.75f, 0.10f, 0.20f, 0.80f);
 
@@ -362,8 +380,7 @@ public class TownManager : MonoBehaviour
 
         AddTown(startTown.x, startTown.y);
         AddTown(endTown.x, endTown.y);
-
-        // ---------- 2) spawn corridor towns ----------
+        
         int remaining = Mathf.Max(0, townCount - 2);
         int corridorCount = Mathf.RoundToInt(remaining * 0.6f);
         int branchCount = remaining - corridorCount;
@@ -374,14 +391,12 @@ public class TownManager : MonoBehaviour
                 AddTown(p.x, p.y);
         }
 
-        // ---------- 3) spawn branch towns ----------
         for (int i = 0; i < branchCount && towns.Count < townCount; i++)
         {
             if (TryFindBranchPoint(startTown, endTown, 0.12f, 0.24f, 700, out Vector2 p))
                 AddTown(p.x, p.y);
         }
-
-        // ---------- 4) emergency fill ----------
+        
         int safety = Mathf.Max(2000, townCount * 300);
         for (int tries = 0; tries < safety && towns.Count < townCount; tries++)
         {
@@ -471,10 +486,18 @@ public class TownManager : MonoBehaviour
             if (!RespectsSpacing(nx, nz)) continue;
 
             Vector3 world = new Vector3(nx * data.size.x, h01 * data.size.y, nz * data.size.z) + terrain.transform.position;
-            var goTown = Instantiate(housePrefab, world, Quaternion.identity, root);
-            goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
 
             TownBiomeType biomeType = GetTownBiomeType(nx, nz);
+            GameObject prefab = GetHousePrefabForBiome(biomeType);
+
+            if (prefab == null)
+            {
+                Debug.LogError($"TownManager: Missing house prefab for biome {biomeType}.");
+                continue;
+            }
+
+            var goTown = Instantiate(prefab, world, Quaternion.identity, root);
+            goTown.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
             string townName = GetRandomTownName(biomeType, rng, usedTownNames);
             usedTownNames.Add(townName);
 

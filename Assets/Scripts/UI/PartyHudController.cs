@@ -1,4 +1,5 @@
-﻿using TMPro;
+﻿using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -29,17 +30,16 @@ public class PartyHUDController : MonoBehaviour
 
     [Header("HUD Groups")]
     [SerializeField] private PartyHUDGroup travelHUD;
+
     [SerializeField] private PartyHUDGroup restHUD;
+    
+    private bool useCombatOverride;
+    private Dictionary<int, float> combatFillOverride = new Dictionary<int, float>();
 
     void Awake()
     {
         if (!runState)
             runState = FindFirstObjectByType<RunState>();
-    }
-
-    void Update()
-    {
-        Refresh();
     }
 
     public void SetVisible(bool visible)
@@ -105,13 +105,36 @@ public class PartyHUDController : MonoBehaviour
 
                 if (group.rows[i].barFill != null)
                 {
-                    float fill = member.maxHealth > 0
-                        ? member.currentHealth / (float)member.maxHealth
-                        : 0f;
+                    float fill;
+
+                    if (useCombatOverride && combatFillOverride.TryGetValue(i, out float overrideFill))
+                    {
+                        fill = overrideFill;
+                    }
+                    else
+                    {
+                        fill = member.maxHealth > 0
+                            ? member.currentHealth / (float)member.maxHealth
+                            : 0f;
+                    }
 
                     group.rows[i].barFill.fillAmount = Mathf.Clamp01(fill);
                 }
             }
         }
+    }
+    
+    public void SetMemberHealth(int index, int current, int max)
+    {
+        useCombatOverride = true;
+
+        float fill = max > 0 ? current / (float)max : 0f;
+        combatFillOverride[index] = Mathf.Clamp01(fill);
+    }
+    
+    public void ClearCombatOverride()
+    {
+        useCombatOverride = false;
+        combatFillOverride.Clear();
     }
 }

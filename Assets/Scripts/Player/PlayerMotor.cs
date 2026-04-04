@@ -23,6 +23,12 @@ public class PlayerMotor : MonoBehaviour
     [SerializeField] private float spawnHopHeight = 15f;
     [SerializeField] private float spawnStartScale = 0.08f;
 
+    [Header("Hop Land Audio")]
+    [SerializeField] private AudioSource hopAudioSource;
+    [SerializeField] private AudioClip[] hopLandClips;
+    [SerializeField] private float hopLandVolume = 1f;
+    [SerializeField] private Vector2 hopPitchRange = new Vector2(0.96f, 1.04f);
+
     public bool IsPhysicsDriven => rb != null && !rb.isKinematic;
 
     private Coroutine moveRoutine;
@@ -33,6 +39,28 @@ public class PlayerMotor : MonoBehaviour
 
         if (!rb) rb = GetComponent<Rigidbody>();
         if (!col) col = GetComponent<Collider>();
+        if (!hopAudioSource) hopAudioSource = GetComponent<AudioSource>();
+    }
+
+    private void PlayHopLandSound()
+    {
+        if (hopAudioSource == null)
+            return;
+
+        if (hopLandClips == null || hopLandClips.Length == 0)
+            return;
+
+        int index = Random.Range(0, hopLandClips.Length);
+        AudioClip clip = hopLandClips[index];
+        if (clip == null)
+            return;
+
+        float minPitch = Mathf.Min(hopPitchRange.x, hopPitchRange.y);
+        float maxPitch = Mathf.Max(hopPitchRange.x, hopPitchRange.y);
+
+        hopAudioSource.pitch = Random.Range(minPitch, maxPitch);
+        hopAudioSource.PlayOneShot(clip, hopLandVolume);
+        hopAudioSource.pitch = 1f;
     }
 
     public void EnablePhysics()
@@ -230,6 +258,8 @@ public class PlayerMotor : MonoBehaviour
                 transform.position = landed;
             }
 
+            PlayHopLandSound();
+
             currentIndex = nextIndex;
         }
 
@@ -348,5 +378,52 @@ public class PlayerMotor : MonoBehaviour
         }
 
         transform.localScale = fullScale;
+        PlayHopLandSound();
+    }
+    
+    public void BeginHopToPosition(
+        PlayerTravelController controller,
+        Vector3 targetPos,
+        Vector3 forward,
+        float duration,
+        float height,
+        System.Action onComplete)
+    {
+        StartCoroutine(HopToPositionRoutine(controller, targetPos, forward, duration, height, onComplete));
+    }
+
+    private IEnumerator HopToPositionRoutine(
+        PlayerTravelController controller,
+        Vector3 targetPos,
+        Vector3 forward,
+        float duration,
+        float height,
+        System.Action onComplete)
+    {
+        Vector3 start = transform.position;
+        Quaternion targetRot = Quaternion.LookRotation(forward, Vector3.up);
+
+        float t = 0f;
+
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float u = Mathf.Clamp01(t / duration);
+            float s = u * u * (3f - 2f * u);
+
+            Vector3 basePos = Vector3.Lerp(start, targetPos, s);
+            float arc = Mathf.Sin(u * Mathf.PI) * height;
+
+            transform.position = basePos + Vector3.up * arc;
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, s);
+
+            yield return null;
+        }
+
+        transform.position = targetPos;
+        transform.rotation = targetRot;
+
+        PlayHopLandSound();
+        onComplete?.Invoke();
     }
 }
